@@ -321,11 +321,35 @@ extension TimeMachineCommandDefinition {
             ]
         ),
         TimeMachineCommandDefinition(
+            id: "enablelocal",
+            title: "Enable Local Snapshots",
+            category: .snapshots,
+            summary: "Turn on local Time Machine snapshots.",
+            usage: "tmutil enablelocal",
+            requiresAdministrator: true
+        ),
+        TimeMachineCommandDefinition(
+            id: "disablelocal",
+            title: "Disable Local Snapshots",
+            category: .snapshots,
+            summary: "Turn off local Time Machine snapshots and trigger cleanup of accumulated snapshot data.",
+            usage: "tmutil disablelocal",
+            requiresAdministrator: true,
+            isDestructive: true
+        ),
+        TimeMachineCommandDefinition(
             id: "localsnapshot",
             title: "Create Local Snapshot",
             category: .snapshots,
             summary: "Create a new local Time Machine snapshot.",
             usage: "tmutil localsnapshot"
+        ),
+        TimeMachineCommandDefinition(
+            id: "snapshot",
+            title: "Snapshot",
+            category: .snapshots,
+            summary: "Create a new local Time Machine snapshot (alias for localsnapshot on newer macOS).",
+            usage: "tmutil snapshot"
         ),
         TimeMachineCommandDefinition(
             id: "listlocalsnapshots",

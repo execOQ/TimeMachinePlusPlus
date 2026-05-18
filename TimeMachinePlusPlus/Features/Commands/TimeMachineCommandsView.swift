@@ -1,4 +1,5 @@
 import AppKit
+import Charts
 import SwiftUI
 
 struct TimeMachineCommandsView: View {
@@ -14,7 +15,6 @@ struct TimeMachineCommandsView: View {
     @State private var restoreDestination = ""
     @State private var comparePaths = ""
     @State private var backupDeletePaths = ""
-    @State private var machineDirectoryPath = ""
     @State private var inheritBackupPath = ""
     @State private var associateMountPoint = ""
     @State private var associateSnapshotVolume = ""
@@ -25,6 +25,8 @@ struct TimeMachineCommandsView: View {
     @State private var commandActivity: TimeMachineCommandActivity?
     @State private var commandResults: [TimeMachineCommandContext: TimeMachineCommandPresentation] = [:]
     @State private var pendingDestructiveAction: DestructiveAction?
+    @State private var sizeTask: Task<Void, Never>?
+    @State private var volumeStats: [String: (total: Int64, free: Int64)] = [:]
 
     private let client = LiveTimeMachineClient()
 
@@ -164,6 +166,7 @@ struct TimeMachineCommandsView: View {
                 } label: {
                     Label("Start Backup", systemImage: "play.fill")
                 }
+                .buttonStyle(.borderedProminent)
 
                 Button {
                     run(arguments: ["startbackup", "--auto", "--block"], context: .backups, title: "Start and Wait", status: "Starting backup and waiting...")
@@ -171,11 +174,15 @@ struct TimeMachineCommandsView: View {
                     Label("Start and Wait", systemImage: "hourglass")
                 }
 
+                Spacer()
+
                 Button(role: .destructive) {
                     pendingDestructiveAction = .stopBackup
                 } label: {
                     Label("Stop Backup", systemImage: "stop.fill")
                 }
+                .buttonStyle(.borderless)
+                .foregroundStyle(.red.opacity(0.8))
                 .disabled(!store.backupStatus.isRunning)
             }
 
@@ -217,12 +224,17 @@ struct TimeMachineCommandsView: View {
                             } label: {
                                 Label("Back Up Here", systemImage: "play.fill")
                             }
+                            .buttonStyle(.borderedProminent)
+
+                            Spacer()
 
                             Button(role: .destructive) {
                                 pendingDestructiveAction = .removeDestination(destination)
                             } label: {
-                                Label("Remove", systemImage: "trash")
+                                Label("Remove Destination", systemImage: "trash")
                             }
+                            .buttonStyle(.borderless)
+                            .foregroundStyle(.red.opacity(0.8))
                         }
 
                         Divider()
@@ -246,9 +258,33 @@ struct TimeMachineCommandsView: View {
                     .padding(8)
                 }
 
+                if let mountPoint = destination.mountPoint {
+                    storageBox(mountPoint: mountPoint)
+                }
+
+                sectionLabel("Snapshots")
                 backupHistoryBox(for: destination)
+
+                sectionLabel("Restore & Compare")
                 destinationRestoreCompareBox(destination: destination)
-                machineDirectoryBox(destination: destination)
+            }
+            .task(id: destination.id) {
+                // Fetch volume stats async so UI doesn't block on network volumes
+                if let mountPoint = destination.mountPoint {
+                    let stats = await Task.detached(priority: .utility) { () -> (Int64, Int64) in
+                        let attrs = try? FileManager.default.attributesOfFileSystem(forPath: mountPoint)
+                        let total = (attrs?[.systemSize] as? Int64) ?? 0
+                        let free = (attrs?[.systemFreeSize] as? Int64) ?? 0
+                        return (total, free)
+                    }.value
+                    volumeStats[mountPoint] = (stats.0, stats.1)
+                }
+                // Auto-measure any uncached snapshot sizes in the background
+                let backups = store.backupHistoriesByDestinationID[destination.id]?.backups ?? []
+                let uncached = backups.filter { store.snapshotSizeCache[$0] == nil }
+                if !uncached.isEmpty {
+                    startMeasuringSizes(backups: uncached)
+                }
             }
         } else {
             Text("Select a destination.")
@@ -312,6 +348,23 @@ struct TimeMachineCommandsView: View {
                 } label: {
                     Label("Thin Snapshots", systemImage: "scissors")
                 }
+            }
+
+            GroupBox("Local Snapshots") {
+                HStack(spacing: 10) {
+                    Button {
+                        run(arguments: ["enablelocal"], context: .snapshots, title: "Enable Local Snapshots", asAdministrator: true, status: "Enabling local snapshots...")
+                    } label: {
+                        Label("Enable", systemImage: "checkmark.circle")
+                    }
+
+                    Button(role: .destructive) {
+                        run(arguments: ["disablelocal"], context: .snapshots, title: "Disable Local Snapshots", asAdministrator: true, status: "Disabling local snapshots...")
+                    } label: {
+                        Label("Disable", systemImage: "pause.circle")
+                    }
+                }
+                .padding(8)
             }
 
             commandFeedback(for: .snapshots)
@@ -615,6 +668,41 @@ struct TimeMachineCommandsView: View {
         }
     }
 
+    private func startMeasuringSizes(backups: [String]) {
+        sizeTask?.cancel()
+        store.isMeasuringSizes = true
+
+        sizeTask = Task.detached(priority: .utility) { [store] in
+            for path in backups {
+                guard !Task.isCancelled else { break }
+                if let kb = Self.diskUsageKB(path: path) {
+                    await MainActor.run {
+                        store.snapshotSizeCache[path] = kb * 1024
+                        store.save()
+                    }
+                }
+            }
+            await MainActor.run { store.isMeasuringSizes = false }
+        }
+    }
+
+    nonisolated private static func diskUsageKB(path: String) -> Int64? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/du")
+        process.arguments = ["-sk", path]
+        let outPipe = Pipe()
+        process.standardOutput = outPipe
+        process.standardError = Pipe()
+        ProcessRegistry.shared.register(process)
+        try? process.run()
+        process.waitUntilExit()
+        ProcessRegistry.shared.deregister(process)
+        let output = String(data: outPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        let token = output.trimmingCharacters(in: .whitespacesAndNewlines)
+            .components(separatedBy: .whitespaces).first ?? ""
+        return Int64(token)
+    }
+
     private func parsedLines(_ value: String) -> [String] {
         value
             .components(separatedBy: .newlines)
@@ -640,6 +728,16 @@ struct TimeMachineCommandsView: View {
             Text(subtitle)
                 .foregroundStyle(.secondary)
         }
+    }
+
+    private func sectionLabel(_ text: String) -> some View {
+        Text(text)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.tertiary)
+            .textCase(.uppercase)
+            .tracking(0.8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 4)
     }
 
     private func diagnosticsBox(arguments: [String], title: String) -> some View {
@@ -715,9 +813,9 @@ struct TimeMachineCommandsView: View {
 
     private var knownExclusionPaths: [String] {
         let applied = store.appliedExclusions.map(\.path)
-        let manual = store.manualExclusions.map(\.path)
+        let specific = store.rules.filter { $0.kind == .specific && $0.isEnabled }.map(\.pattern)
         let scanned = store.matches.filter(\.isExcluded).map(\.path)
-        return Array(Set(applied + manual + scanned))
+        return Array(Set(applied + specific + scanned))
             .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
     }
 
@@ -747,6 +845,14 @@ struct TimeMachineCommandsView: View {
                                     .lineLimit(1)
                                     .truncationMode(.middle)
                                 Spacer()
+                                if let size = store.snapshotSizeCache[backup] {
+                                    Text(Formatters.fileSize(size))
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .monospacedDigit()
+                                } else if store.isMeasuringSizes {
+                                    ProgressView().controlSize(.mini)
+                                }
                                 Button(role: .destructive) {
                                     pendingDestructiveAction = .deleteBackupPaths([backup])
                                 } label: {
@@ -755,6 +861,20 @@ struct TimeMachineCommandsView: View {
                                 .buttonStyle(.borderless)
                                 .help("Delete this backup snapshot")
                             }
+                        }
+
+                        let measured = history.backups.compactMap { store.snapshotSizeCache[$0] }
+                        if !measured.isEmpty {
+                            HStack {
+                                Text("Total measured (\(measured.count) of \(history.backups.count))")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                Text(Formatters.fileSize(measured.reduce(0, +)))
+                                    .font(.caption.weight(.medium))
+                                    .monospacedDigit()
+                            }
+                            .padding(.top, 4)
                         }
                     }
                 } else if history.noBackupsForCurrentHost {
@@ -775,7 +895,7 @@ struct TimeMachineCommandsView: View {
                             }
                         }
 
-                        Text("Use Resolve/List under Machine Directory & Drift below. If this is backup history from another Mac or renamed disk, Inherit Backup or Associate Disk may be needed before snapshots appear here.")
+                        Text("If this is backup history from another Mac or renamed disk, Inherit Backup or Associate Disk may be needed before snapshots appear here.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -865,6 +985,27 @@ struct TimeMachineCommandsView: View {
                     }
                     .disabled(destination.mountPoint == nil)
                     .help(destination.mountPoint == nil ? "The network share is mounted, but the Time Machine backup image is not mounted as a browsable snapshot volume." : "Find latest backup for this destination")
+
+                    Divider().frame(height: 16)
+
+                    if store.isMeasuringSizes {
+                        ProgressView().controlSize(.small)
+                        Button("Cancel") {
+                            sizeTask?.cancel()
+                            store.isMeasuringSizes = false
+                        }
+                        .foregroundStyle(.secondary)
+                    } else {
+                        let uncached = history.backups.filter { store.snapshotSizeCache[$0] == nil }
+                        Button {
+                            let toMeasure = uncached.isEmpty ? history.backups : uncached
+                            startMeasuringSizes(backups: toMeasure)
+                        } label: {
+                            Label(uncached.isEmpty ? "Re-measure" : "Measure Sizes", systemImage: "ruler")
+                        }
+                        .disabled(history.backups.isEmpty)
+                        .help(uncached.isEmpty ? "All sizes cached — click to re-measure" : "Measure total disk usage of each snapshot")
+                    }
                 }
 
                 commandFeedback(for: .destinationSnapshots(destination.id))
@@ -915,124 +1056,37 @@ struct TimeMachineCommandsView: View {
         }
     }
 
-    private func machineDirectoryBox(destination: TimeMachineDestination? = nil) -> some View {
-        let knownDirs: [String] = {
-            guard let id = destination?.id else { return [] }
-            let fromHistory = store.backupHistoriesByDestinationID[id]?.machineDirectories ?? []
-            if !fromHistory.isEmpty { return fromHistory }
-            guard let result = commandResults[.machineDirectory] else { return [] }
-            let raw = result.detail.isEmpty ? result.summary : result.detail
-            let paths = raw
-                .components(separatedBy: .newlines)
-                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                .filter { $0.hasPrefix("/") }
-                .map { path -> String in
-                    let url = URL(fileURLWithPath: path)
-                    let last = url.lastPathComponent
-                    let isSnapshot = last.range(
-                        of: #"^\d{4}-\d{2}-\d{2}-\d{6}(\.backup)?$"#,
-                        options: .regularExpression
-                    ) != nil
-                    return isSnapshot ? url.deletingLastPathComponent().path : path
-                }
-            return Array(Set(paths)).sorted()
-        }()
+    private func storageBox(mountPoint: String) -> some View {
+        GroupBox("Storage") {
+            if let stats = volumeStats[mountPoint] {
+                let used = max(0, stats.total - stats.free)
+                let usedFraction = stats.total > 0 ? Double(used) / Double(stats.total) : 0
+                VStack(alignment: .leading, spacing: 10) {
+                    ProgressView(value: usedFraction)
+                        .progressViewStyle(.linear)
+                        .tint(usedFraction > 0.9 ? .red : usedFraction > 0.75 ? .orange : .accentColor)
 
-        let effectivePath: String = {
-            if !machineDirectoryPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                return machineDirectoryPath
-            }
-            return knownDirs.count == 1 ? knownDirs[0] : ""
-        }()
-
-        return GroupBox("Machine Directory & Drift") {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Machine directory is the folder or sparsebundle section that contains this Mac's backup history. Drift compares changes across snapshots inside that directory.")
+                    Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 4) {
+                        GridRow {
+                            storageCell("Used", value: Formatters.fileSize(used))
+                            storageCell("Available", value: Formatters.fileSize(stats.free))
+                            storageCell("Total", value: Formatters.fileSize(stats.total))
+                        }
+                    }
                     .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                HStack(spacing: 10) {
-                    Button {
-                        run(arguments: ["machinedirectory"], context: .machineDirectory, title: "Resolve Machine Directory", status: "Resolving machine directory...")
-                    } label: {
-                        Label("Resolve", systemImage: "folder")
-                    }
-
-                    Button {
-                        if let mountPoint = destination?.mountPoint {
-                            run(arguments: ["listbackups", "-m", "-d", mountPoint], context: .machineDirectory, title: "List Machine Directories", status: "Listing machine directories...")
-                        } else {
-                            run(arguments: ["listbackups", "-m"], context: .machineDirectory, title: "List Machine Directories", status: "Listing machine directories...")
-                        }
-                    } label: {
-                        Label("List", systemImage: "list.bullet")
-                    }
                 }
-
-                if knownDirs.count > 1 {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Select machine directory")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        ForEach(knownDirs, id: \.self) { dir in
-                            HStack(spacing: 8) {
-                                Text(dir)
-                                    .font(.system(.caption, design: .monospaced))
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
-                                    .foregroundStyle(effectivePath == dir ? .primary : .secondary)
-                                Spacer()
-                                Button {
-                                    machineDirectoryPath = dir
-                                } label: {
-                                    Text(effectivePath == dir ? "Selected" : "Use")
-                                        .font(.caption)
-                                }
-                                .buttonStyle(.bordered)
-                                .controlSize(.mini)
-                            }
-                            .padding(6)
-                            .background(
-                                effectivePath == dir
-                                    ? AnyShapeStyle(.tint.opacity(0.10))
-                                    : AnyShapeStyle(.clear),
-                                in: RoundedRectangle(cornerRadius: 6)
-                            )
-                        }
-                    }
-                } else if !effectivePath.isEmpty {
-                    Text(effectivePath)
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                } else {
-                    Text("Click List to find machine directories for this destination.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                HStack(spacing: 10) {
-                    Button {
-                        run(arguments: ["calculatedrift", effectivePath], context: .machineDirectory, title: "Calculate Drift", status: "Calculating drift...")
-                    } label: {
-                        Label("Calculate Drift", systemImage: "chart.line.uptrend.xyaxis")
-                    }
-                    .disabled(effectivePath.isEmpty)
-
-                    Button(role: .destructive) {
-                        pendingDestructiveAction = .deleteInProgress(effectivePath)
-                    } label: {
-                        Label("Delete In-Progress", systemImage: "trash")
-                    }
-                    .disabled(effectivePath.isEmpty)
-                }
-
-                commandFeedback(for: .machineDirectory)
+            } else {
+                ProgressView().controlSize(.small)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(8)
+        }
+        .padding(.vertical, 2)
+    }
+
+    private func storageCell(_ label: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(label).foregroundStyle(.secondary)
+            Text(value).fontWeight(.medium).monospacedDigit()
         }
     }
 
@@ -1135,8 +1189,8 @@ struct TimeMachineCommandsView: View {
             run(arguments: arguments, context: .snapshots, title: "Thin Local Snapshots", status: "Thinning local snapshots...")
         case .deleteBackupPaths(let paths):
             run(arguments: ["delete"] + paths, context: deleteContext(for: paths), title: "Delete Backup Paths", asAdministrator: true, status: "Deleting backup paths...")
-        case .deleteInProgress(let machineDirectory):
-            run(arguments: ["deleteinprogress", machineDirectory], context: .machineDirectory, title: "Delete In-Progress Backup", asAdministrator: true, status: "Deleting in-progress backup...")
+        case .deleteInProgress:
+            break
         }
     }
 
@@ -1224,7 +1278,7 @@ private enum DestructiveAction: Identifiable {
     case deleteSnapshot(String)
     case thinSnapshots(String, String)
     case deleteBackupPaths([String])
-    case deleteInProgress(String)
+    case deleteInProgress
 
     var id: String {
         switch self {
@@ -1238,8 +1292,8 @@ private enum DestructiveAction: Identifiable {
             return "thinSnapshots-\(amount)-\(urgency)"
         case .deleteBackupPaths(let paths):
             return "deleteBackupPaths-\(paths.joined(separator: "|"))"
-        case .deleteInProgress(let machineDirectory):
-            return "deleteInProgress-\(machineDirectory)"
+        case .deleteInProgress:
+            return "deleteInProgress"
         }
     }
 
@@ -1272,11 +1326,13 @@ private enum DestructiveAction: Identifiable {
             return "Time Machine will purge local snapshots for the startup volume."
         case .deleteBackupPaths(let paths):
             return "\(paths.count) backup path\(paths.count == 1 ? "" : "s") will be deleted."
-        case .deleteInProgress(let machineDirectory):
-            return "The in-progress backup in \(machineDirectory) will be deleted."
+        case .deleteInProgress:
+            return "The in-progress backup will be deleted."
         }
     }
 }
+
+
 
 private struct InlineCommandProgress: View {
     var title: String

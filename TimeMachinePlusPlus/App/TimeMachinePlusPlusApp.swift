@@ -98,4 +98,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
     }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        ProcessRegistry.shared.terminateAll()
+    }
 }

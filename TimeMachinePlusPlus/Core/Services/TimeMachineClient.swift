@@ -1,5 +1,32 @@
 import Foundation
 
+final class ProcessRegistry {
+    static let shared = ProcessRegistry()
+    private var processes: [ObjectIdentifier: Process] = [:]
+    private let lock = NSLock()
+
+    private init() {}
+
+    func register(_ process: Process) {
+        lock.lock()
+        processes[ObjectIdentifier(process)] = process
+        lock.unlock()
+    }
+
+    func deregister(_ process: Process) {
+        lock.lock()
+        processes.removeValue(forKey: ObjectIdentifier(process))
+        lock.unlock()
+    }
+
+    func terminateAll() {
+        lock.lock()
+        let snapshot = Array(processes.values)
+        lock.unlock()
+        snapshot.forEach { $0.terminate() }
+    }
+}
+
 struct CommandResult: Equatable {
     var exitCode: Int32
     var output: String
@@ -19,11 +46,17 @@ protocol TimeMachineClient {
 
 struct LiveTimeMachineClient: TimeMachineClient {
     func addExclusion(path: String) throws -> CommandResult {
+        // xattr form only: -p requires admin and prompts for a password, which is too disruptive.
+        // Time Machine fully respects xattr exclusions; they just don't appear in System Settings.
         try runTmutil(arguments: ["addexclusion", path])
     }
 
     func removeExclusion(path: String) throws -> CommandResult {
-        try runTmutil(arguments: ["removeexclusion", path])
+        let xattr = try? runTmutil(arguments: ["removeexclusion", path])
+        let pathBased = try? runTmutil(arguments: ["removeexclusion", "-p", path])
+        // Succeed if either form was removed; both may fail if exclusion was already gone
+        let didRemove = (xattr?.isSuccess ?? false) || (pathBased?.isSuccess ?? false)
+        return CommandResult(exitCode: didRemove ? 0 : 1, output: "", errorOutput: "")
     }
 
     func isExcluded(path: String) throws -> Bool {
@@ -60,8 +93,10 @@ struct LiveTimeMachineClient: TimeMachineClient {
         process.standardOutput = outputPipe
         process.standardError = errorPipe
 
+        ProcessRegistry.shared.register(process)
         try process.run()
         process.waitUntilExit()
+        ProcessRegistry.shared.deregister(process)
 
         let output = String(data: outputPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
         let errorOutput = String(data: errorPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
@@ -81,8 +116,10 @@ struct LiveTimeMachineClient: TimeMachineClient {
         process.standardOutput = outputPipe
         process.standardError = errorPipe
 
+        ProcessRegistry.shared.register(process)
         try process.run()
         process.waitUntilExit()
+        ProcessRegistry.shared.deregister(process)
 
         let output = String(data: outputPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
         let errorOutput = String(data: errorPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
