@@ -65,6 +65,8 @@ struct ContentView: View {
             if store.isWorking {
                 BlockingOperationOverlay(
                     title: store.operationTitle ?? "Working",
+                    detail: store.operationDetail,
+                    progress: store.operationProgress,
                     canCancel: store.canCancelCurrentOperation,
                     onCancel: { store.cancelOperation() }
                 )
@@ -235,6 +237,11 @@ struct StatusBarView: View {
                     .foregroundStyle(.tertiary)
             }
 
+            if let operationDetail = store.operationDetail {
+                Text("· \(operationDetail)")
+                    .foregroundStyle(.tertiary)
+            }
+
             Spacer()
 
             if store.isWorking, store.canCancelCurrentOperation {
@@ -258,6 +265,8 @@ struct StatusBarView: View {
 
 private struct BlockingOperationOverlay: View {
     var title: String
+    var detail: String?
+    var progress: Double?
     var canCancel: Bool
     var onCancel: () -> Void
 
@@ -267,10 +276,22 @@ private struct BlockingOperationOverlay: View {
                 .ignoresSafeArea()
 
             VStack(spacing: 12) {
-                ProgressView()
-                    .controlSize(.regular)
+                if let progress {
+                    ProgressView(value: progress)
+                        .progressViewStyle(.linear)
+                        .frame(width: 250)
+                } else {
+                    ProgressView()
+                        .controlSize(.regular)
+                }
                 Text(title)
                     .font(.headline)
+                if let detail {
+                    Text(detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
                 if canCancel {
                     Button("Cancel", role: .cancel, action: onCancel)
                         .padding(.top, 4)

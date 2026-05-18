@@ -14,8 +14,10 @@ struct TimeMachinePlusPlusApp: App {
         if Self.isBackgroundScan {
             Task { @MainActor in
                 store.load()
+                _ = store.beginBlockingOperation(title: "Background Scan")
                 await store.scanNow()
                 await store.applySelectedMatches()
+                store.finishBlockingOperation(status: store.statusMessage)
                 NSApp.terminate(nil)
             }
         }
@@ -39,7 +41,7 @@ struct TimeMachinePlusPlusApp: App {
         .commands {
             CommandGroup(after: .newItem) {
                 Button("Scan + Start Backup") {
-                    Task { await store.scanAndStartBackup() }
+                    store.startScanAndBackup()
                 }
                 .keyboardShortcut("b", modifiers: [.command, .shift])
 

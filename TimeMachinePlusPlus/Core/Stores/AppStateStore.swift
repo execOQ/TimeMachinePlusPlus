@@ -15,6 +15,8 @@ final class AppStateStore: ObservableObject {
     @Published var isWorking = false
     @Published var canCancelCurrentOperation = true
     @Published var operationTitle: String?
+    @Published var operationDetail: String?
+    @Published var operationProgress: Double?
     @Published var isHelperInstalled = false
     @Published var timeMachineDestinations: [TimeMachineDestination] = []
     @Published var backupHistoriesByDestinationID: [String: TimeMachineBackupHistory] = [:]
@@ -29,6 +31,9 @@ final class AppStateStore: ObservableObject {
     private let launchAgent = LaunchAgentService()
     private var activeTask: Task<Void, Never>?
     private var didStartBackupDuringActiveTask = false
+    private var operationActivityToken: NSObjectProtocol?
+    private var backupActivityToken: NSObjectProtocol?
+    private var backupActivityTask: Task<Void, Never>?
 
     var canEdit: Bool { !isWorking }
 
@@ -106,6 +111,7 @@ final class AppStateStore: ObservableObject {
         } catch {
             backupStatus = .unknown
         }
+        syncBackupSleepPrevention()
 
         do {
             let snapshotResult = try timeMachine.run(arguments: ["listlocalsnapshotdates", "/"], asAdministrator: false)
@@ -263,7 +269,10 @@ final class AppStateStore: ObservableObject {
         isWorking = true
         canCancelCurrentOperation = true
         operationTitle = title
+        operationDetail = nil
+        operationProgress = nil
         didStartBackupDuringActiveTask = false
+        beginSleepPrevention(reason: title)
 
         activeTask = Task { [weak self] in
             guard let self else { return }
@@ -281,8 +290,11 @@ final class AppStateStore: ObservableObject {
         isWorking = false
         canCancelCurrentOperation = true
         operationTitle = nil
+        operationDetail = nil
+        operationProgress = nil
         didStartBackupDuringActiveTask = false
         activeTask = nil
+        endSleepPrevention()
     }
 
     func beginBlockingOperation(title: String) -> Bool {
@@ -290,7 +302,10 @@ final class AppStateStore: ObservableObject {
         isWorking = true
         canCancelCurrentOperation = false
         operationTitle = title
+        operationDetail = nil
+        operationProgress = nil
         statusMessage = title
+        beginSleepPrevention(reason: title)
         return true
     }
 
@@ -299,6 +314,82 @@ final class AppStateStore: ObservableObject {
         isWorking = false
         canCancelCurrentOperation = true
         operationTitle = nil
+        operationDetail = nil
+        operationProgress = nil
+        endSleepPrevention()
+    }
+
+    private func updateOperation(detail: String, progress: Double?, updateStatus: Bool = true) {
+        if isWorking {
+            operationDetail = detail
+            operationProgress = progress
+        }
+        if updateStatus {
+            statusMessage = detail
+        }
+    }
+
+    private func beginSleepPrevention(reason: String) {
+        endSleepPrevention()
+        operationActivityToken = ProcessInfo.processInfo.beginActivity(
+            options: [.userInitiated, .idleSystemSleepDisabled],
+            reason: reason
+        )
+    }
+
+    private func endSleepPrevention() {
+        guard let operationActivityToken else { return }
+        ProcessInfo.processInfo.endActivity(operationActivityToken)
+        self.operationActivityToken = nil
+    }
+
+    private func syncBackupSleepPrevention() {
+        if backupStatus.isRunning {
+            beginBackupSleepPrevention()
+            startBackupSleepMonitor()
+        } else {
+            endBackupSleepPrevention()
+        }
+    }
+
+    private func beginBackupSleepPrevention() {
+        guard backupActivityToken == nil else { return }
+        backupActivityToken = ProcessInfo.processInfo.beginActivity(
+            options: [.userInitiated, .idleSystemSleepDisabled],
+            reason: "Time Machine backup"
+        )
+    }
+
+    private func endBackupSleepPrevention() {
+        backupActivityTask?.cancel()
+        backupActivityTask = nil
+        guard let backupActivityToken else { return }
+        ProcessInfo.processInfo.endActivity(backupActivityToken)
+        self.backupActivityToken = nil
+    }
+
+    private func startBackupSleepMonitor() {
+        guard backupActivityTask == nil else { return }
+        backupActivityTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 60_000_000_000)
+                guard !Task.isCancelled else { return }
+                await self?.refreshBackupStatusForSleepPrevention()
+            }
+        }
+    }
+
+    private func refreshBackupStatusForSleepPrevention() async {
+        let nextStatus = await Task.detached(priority: .utility) { [timeMachine] in
+            do {
+                let result = try timeMachine.run(arguments: ["status"], asAdministrator: false)
+                return TimeMachineStateParser.backupStatus(from: result)
+            } catch {
+                return .unknown
+            }
+        }.value
+        backupStatus = nextStatus
+        syncBackupSleepPrevention()
     }
 
     func addRule() {
@@ -391,15 +482,17 @@ final class AppStateStore: ObservableObject {
     }
 
     func scanNow() async {
-        statusMessage = "Scanning..."
+        updateOperation(detail: "Scanning rules", progress: operationTitle == "Scan + Backup" ? 0.12 : nil)
 
         let specificRules = rules.filter { $0.kind == .specific && $0.isEnabled && !$0.pattern.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
+        updateOperation(detail: "Searching scan roots", progress: operationTitle == "Scan + Backup" ? 0.20 : nil)
         let scanned = await Task.detached(priority: .userInitiated) { [settings, rules, scanner] in
             scanner.scan(settings: settings, rules: rules)
         }.value
         guard !Task.isCancelled else { return }
 
+        updateOperation(detail: "Collecting specific paths", progress: operationTitle == "Scan + Backup" ? 0.34 : nil)
         // Collect all paths for specific rules that exist on disk and aren't already in scanned results
         let scannedPaths = Set(scanned.map(\.0.path))
         let specificCandidates: [(path: String, rule: RegexRule, isDirectory: Bool)] = specificRules.compactMap { rule in
@@ -410,6 +503,7 @@ final class AppStateStore: ObservableObject {
         }
         guard !Task.isCancelled else { return }
 
+        updateOperation(detail: "Checking Time Machine status", progress: operationTitle == "Scan + Backup" ? 0.48 : nil)
         // Check exclusion status for all paths concurrently (one tmutil process per path, all in parallel)
         let allPaths = scanned.map(\.0.path) + specificCandidates.map(\.path)
         let exclusionStatuses = await Task.detached(priority: .userInitiated) { [timeMachine] in
@@ -462,23 +556,37 @@ final class AppStateStore: ObservableObject {
         matches = nextMatches.sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
         lastScanDate = Date()
         statusMessage = "Found \(matches.count) candidate exclusions"
+        if operationTitle == "Scan + Backup" {
+            updateOperation(detail: "Found \(matches.count) candidate exclusions", progress: 0.58)
+        }
     }
 
     func applySelectedMatches() async {
         let targets = matches.filter { $0.isSelected && !$0.isExcluded }
         guard !targets.isEmpty else {
             statusMessage = "Nothing new to exclude"
+            if operationTitle == "Scan + Backup" {
+                updateOperation(detail: "No new exclusions to apply", progress: 0.72)
+            }
             return
         }
 
         var applied = 0
         var failures: [String] = []
 
-        for target in targets {
+        for (offset, target) in targets.enumerated() {
             guard !Task.isCancelled else {
                 statusMessage = "Cancelled after applying \(applied) exclusions"
                 save()
                 return
+            }
+
+            if operationTitle == "Scan + Backup" {
+                let fraction = Double(offset) / Double(max(targets.count, 1))
+                updateOperation(
+                    detail: "Applying exclusion \(offset + 1) of \(targets.count)",
+                    progress: 0.60 + min(fraction, 1) * 0.28
+                )
             }
 
             let result = await Task.detached(priority: .userInitiated) { [timeMachine] in
@@ -501,7 +609,11 @@ final class AppStateStore: ObservableObject {
         statusMessage = failures.isEmpty
             ? "Applied \(applied) exclusions"
             : "Applied \(applied), failed \(failures.count)."
-        await scanNow()
+        if operationTitle == "Scan + Backup" {
+            updateOperation(detail: "Applied \(applied) exclusions", progress: 0.88)
+        } else {
+            await scanNow()
+        }
     }
 
     func removeApplied(_ exclusion: AppliedExclusion) async {
@@ -566,6 +678,7 @@ final class AppStateStore: ObservableObject {
     }
 
     func scanAndStartBackup() async {
+        updateOperation(detail: "Preparing scan", progress: 0.05)
         await scanNow()
         guard !Task.isCancelled else { return }
         await applySelectedMatches()
@@ -573,12 +686,23 @@ final class AppStateStore: ObservableObject {
 
         do {
             didStartBackupDuringActiveTask = true
+            updateOperation(detail: "Starting Time Machine backup", progress: 0.94)
             let result = try timeMachine.startBackup()
             statusMessage = result.isSuccess
                 ? "Backup started after applying exclusions"
                 : "Exclusions applied, but backup did not start"
+            if result.isSuccess {
+                backupStatus = TimeMachineBackupStatus(isRunning: true, rawOutput: "")
+                syncBackupSleepPrevention()
+            }
+            updateOperation(
+                detail: result.isSuccess ? "Backup started" : "Backup did not start",
+                progress: 1.0,
+                updateStatus: false
+            )
         } catch {
             statusMessage = "Exclusions applied, but backup did not start: \(error.localizedDescription)"
+            updateOperation(detail: "Backup did not start", progress: 1.0, updateStatus: false)
         }
     }
 
