@@ -102,12 +102,11 @@ struct SettingsView: View {
                 }
 
                 GroupBox("App-Managed Exclusions") {
-                    if store.appliedExclusions.isEmpty {
-                        Text("No exclusions have been applied by TimeMachine++ yet.")
-                            .foregroundStyle(.secondary)
-                            .padding(8)
-                    } else {
-                        VStack(spacing: 8) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        if store.appliedExclusions.isEmpty {
+                            Text("No exclusions have been applied by TimeMachine++ yet.")
+                                .foregroundStyle(.secondary)
+                        } else {
                             ForEach(store.appliedExclusions) { exclusion in
                                 HStack {
                                     VStack(alignment: .leading, spacing: 3) {
@@ -130,8 +129,11 @@ struct SettingsView: View {
                                 Divider()
                             }
                         }
-                        .padding(8)
+                        Text("Exclusions are applied as file attributes. Time Machine respects them, but they won't appear in System Settings — that list requires admin access to the system preferences file.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
+                    .padding(8)
                 }
             }
             .padding(20)

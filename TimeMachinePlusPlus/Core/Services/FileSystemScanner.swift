@@ -8,7 +8,7 @@ struct FileSystemScanner {
     }
 
     func scan(settings: AppSettings, rules: [RegexRule]) -> [Candidate: RegexRule] {
-        let enabledRules = rules.filter { $0.isEnabled && RuleMatcher.validationError(for: $0) == nil }
+        let enabledRules = rules.filter { $0.isEnabled && $0.kind != .specific && RuleMatcher.validationError(for: $0) == nil }
 
         guard !enabledRules.isEmpty else { return [:] }
 

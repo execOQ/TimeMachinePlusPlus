@@ -1,27 +1,129 @@
+import AppKit
 import SwiftUI
+
+// MARK: - Exclusions (combined tabbed entry point)
+
+enum ExclusionTab: String, CaseIterable, Identifiable {
+    case rules = "Rules"
+    case results = "Results"
+    var id: String { rawValue }
+}
+
+struct ExclusionsView: View {
+    @ObservedObject var store: AppStateStore
+    @State private var tab: ExclusionTab = .results
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HeaderView(
+                title: "Exclusions",
+                subtitle: tab.subtitle
+            ) {
+                Picker("Tab", selection: $tab) {
+                    ForEach(ExclusionTab.allCases) { t in
+                        Text(t.rawValue).tag(t)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 140)
+
+                tabActions
+            }
+
+            switch tab {
+            case .rules:
+                RulesView(store: store, showsHeader: false)
+            case .results:
+                ScanResultsView(store: store, showsHeader: false)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var tabActions: some View {
+        switch tab {
+        case .rules:
+            Button {
+                store.addRule()
+            } label: {
+                Label("Add Rule", systemImage: "plus")
+            }
+            .disabled(!store.canEdit)
+
+            Button {
+                pickSpecificPaths()
+            } label: {
+                Label("Add Specific", systemImage: "folder.badge.plus")
+            }
+            .disabled(!store.canEdit)
+
+        case .results:
+            Button {
+                store.startScanNow()
+            } label: {
+                Label("Scan", systemImage: "arrow.clockwise")
+            }
+            .disabled(store.isWorking)
+
+            Button {
+                store.startApplySelectedMatches()
+            } label: {
+                Label("Apply Selected", systemImage: "checkmark.circle")
+            }
+            .disabled(store.isWorking)
+        }
+    }
+
+    private func pickSpecificPaths() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = true
+        panel.treatsFilePackagesAsDirectories = true
+        panel.prompt = "Add"
+        guard panel.runModal() == .OK else { return }
+        store.addSpecificPaths(panel.urls)
+        store.startScanNow()
+        tab = .results
+    }
+}
+
+private extension ExclusionTab {
+    var subtitle: String {
+        switch self {
+        case .rules: return "Add specific paths or define git-like patterns and regex to match folders automatically."
+        case .results: return "Preview exactly what TimeMachine++ will ask Time Machine to exclude."
+        }
+    }
+}
+
+// MARK: - Scan Results
 
 struct ScanResultsView: View {
     @ObservedObject var store: AppStateStore
+    var showsHeader: Bool = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HeaderView(
-                title: "Scan Results",
-                subtitle: "Preview exactly what TimeMachine++ will ask Time Machine to exclude."
-            ) {
-                Button {
-                    store.startScanNow()
-                } label: {
-                    Label("Scan", systemImage: "arrow.clockwise")
-                }
-                .disabled(store.isWorking)
+            if showsHeader {
+                HeaderView(
+                    title: "Scan Results",
+                    subtitle: "Preview exactly what TimeMachine++ will ask Time Machine to exclude."
+                ) {
+                    Button {
+                        store.startScanNow()
+                    } label: {
+                        Label("Scan", systemImage: "arrow.clockwise")
+                    }
+                    .disabled(store.isWorking)
 
-                Button {
-                    store.startApplySelectedMatches()
-                } label: {
-                    Label("Apply Selected", systemImage: "checkmark.circle")
+                    Button {
+                        store.startApplySelectedMatches()
+                    } label: {
+                        Label("Apply Selected", systemImage: "checkmark.circle")
+                    }
+                    .disabled(store.isWorking)
                 }
-                .disabled(store.isWorking)
             }
 
             if store.matches.isEmpty {

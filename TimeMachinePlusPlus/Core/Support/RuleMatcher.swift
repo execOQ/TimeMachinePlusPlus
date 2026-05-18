@@ -3,8 +3,11 @@ import Foundation
 enum RuleMatcher {
     static func validationError(for rule: RegexRule) -> String? {
         switch rule.kind {
-        case .folderName:
-            return folderTokens(from: rule.pattern).isEmpty ? "Enter at least one folder name." : nil
+        case .specific:
+            let p = rule.pattern.trimmingCharacters(in: .whitespacesAndNewlines)
+            if p.isEmpty { return "Enter an absolute path." }
+            if !p.hasPrefix("/") { return "Path must start with /." }
+            return nil
         case .gitignore:
             return gitignorePatterns(from: rule.pattern).isEmpty ? "Enter at least one git-like pattern." : nil
         case .regex:
@@ -14,16 +17,8 @@ enum RuleMatcher {
 
     static func matches(path: String, isDirectory: Bool, rule: RegexRule) -> Bool {
         switch rule.kind {
-        case .folderName:
-            guard isDirectory else { return false }
-            let normalizedPath = path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-            let components = normalizedPath.split(separator: "/").map(String.init)
-            return folderTokens(from: rule.pattern).contains { token in
-                if token.contains("/") {
-                    return normalizedPath == token || normalizedPath.hasSuffix("/\(token)")
-                }
-                return components.contains(token)
-            }
+        case .specific:
+            return path == rule.pattern.trimmingCharacters(in: .whitespacesAndNewlines)
 
         case .gitignore:
             return gitignorePatterns(from: rule.pattern).contains { pattern in
@@ -35,14 +30,6 @@ enum RuleMatcher {
             let range = NSRange(path.startIndex..<path.endIndex, in: path)
             return regex.firstMatch(in: path, range: range) != nil
         }
-    }
-
-    private static func folderTokens(from input: String) -> [String] {
-        input
-            .components(separatedBy: CharacterSet(charactersIn: ",\n"))
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .map { $0.trimmingCharacters(in: CharacterSet(charactersIn: "/")) }
-            .filter { !$0.isEmpty }
     }
 
     private static func gitignorePatterns(from input: String) -> [String] {

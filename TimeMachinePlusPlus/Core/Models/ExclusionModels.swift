@@ -1,7 +1,7 @@
 import Foundation
 
 enum RuleKind: String, CaseIterable, Codable, Hashable, Identifiable {
-    case folderName
+    case specific
     case gitignore
     case regex
 
@@ -9,7 +9,7 @@ enum RuleKind: String, CaseIterable, Codable, Hashable, Identifiable {
 
     var title: String {
         switch self {
-        case .folderName: return "Folder"
+        case .specific: return "Specific"
         case .gitignore: return "Git-like"
         case .regex: return "Regex"
         }
@@ -17,7 +17,7 @@ enum RuleKind: String, CaseIterable, Codable, Hashable, Identifiable {
 
     var placeholder: String {
         switch self {
-        case .folderName: return "node_modules"
+        case .specific: return "/Users/you/path/to/file-or-folder"
         case .gitignore: return "node_modules/"
         case .regex: return #"/node_modules($|/)"#
         }
@@ -25,8 +25,8 @@ enum RuleKind: String, CaseIterable, Codable, Hashable, Identifiable {
 
     var help: String {
         switch self {
-        case .folderName:
-            return "Type one or more folder names, separated by commas or new lines."
+        case .specific:
+            return "Exact absolute path to a file or folder. Use the browse button or type the path directly."
         case .gitignore:
             return "Use simple gitignore-style globs like node_modules/, **/.venv/, build/, or *.xcactivitylog."
         case .regex:
@@ -47,7 +47,7 @@ struct RegexRule: Identifiable, Codable, Hashable {
         id: UUID = UUID(),
         name: String,
         pattern: String,
-        kind: RuleKind = .folderName,
+        kind: RuleKind = .gitignore,
         isEnabled: Bool = true,
         includeFiles: Bool = false
     ) {
@@ -72,10 +72,23 @@ struct RegexRule: Identifiable, Codable, Hashable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
         name = try container.decode(String.self, forKey: .name)
-        pattern = try container.decode(String.self, forKey: .pattern)
-        kind = try container.decodeIfPresent(RuleKind.self, forKey: .kind) ?? .regex
         isEnabled = try container.decode(Bool.self, forKey: .isEnabled)
         includeFiles = try container.decode(Bool.self, forKey: .includeFiles)
+
+        let rawKind = try container.decodeIfPresent(String.self, forKey: .kind)
+        if rawKind == "folderName" {
+            // Legacy migration: folder-name rules become gitignore patterns (name/ format)
+            kind = .gitignore
+            let rawPattern = try container.decode(String.self, forKey: .pattern)
+            let tokens = rawPattern
+                .components(separatedBy: CharacterSet(charactersIn: ",\n"))
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: "/")) }
+                .filter { !$0.isEmpty }
+            pattern = tokens.map { $0.contains("/") ? $0 : "\($0)/" }.joined(separator: "\n")
+        } else {
+            kind = rawKind.flatMap(RuleKind.init(rawValue:)) ?? .regex
+            pattern = try container.decode(String.self, forKey: .pattern)
+        }
     }
 }
 
@@ -124,14 +137,11 @@ struct AppliedExclusion: Identifiable, Codable, Hashable {
 struct ScanMatch: Identifiable, Hashable {
     enum Source: Hashable {
         case rule(String)
-        case manual
 
         var label: String {
             switch self {
             case .rule(let name):
                 return name
-            case .manual:
-                return "Manual"
             }
         }
     }
@@ -154,13 +164,35 @@ struct PersistedState: Codable {
     var manualExclusions: [ManualExclusion]
     var appliedExclusions: [AppliedExclusion]
     var settings: AppSettings
+    var snapshotSizeCache: [String: Int64]
+
+    private enum CodingKeys: String, CodingKey {
+        case rules, manualExclusions, appliedExclusions, settings, snapshotSizeCache
+    }
+
+    init(rules: [RegexRule], manualExclusions: [ManualExclusion], appliedExclusions: [AppliedExclusion], settings: AppSettings, snapshotSizeCache: [String: Int64] = [:]) {
+        self.rules = rules
+        self.manualExclusions = manualExclusions
+        self.appliedExclusions = appliedExclusions
+        self.settings = settings
+        self.snapshotSizeCache = snapshotSizeCache
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        rules = try c.decode([RegexRule].self, forKey: .rules)
+        manualExclusions = try c.decodeIfPresent([ManualExclusion].self, forKey: .manualExclusions) ?? []
+        appliedExclusions = try c.decode([AppliedExclusion].self, forKey: .appliedExclusions)
+        settings = try c.decode(AppSettings.self, forKey: .settings)
+        snapshotSizeCache = try c.decodeIfPresent([String: Int64].self, forKey: .snapshotSizeCache) ?? [:]
+    }
 
     static var defaults: PersistedState {
         PersistedState(
             rules: [
-                RegexRule(name: "Node dependencies", pattern: "node_modules", kind: .folderName),
-                RegexRule(name: "Python virtualenvs", pattern: ".venv, venv", kind: .folderName),
-                RegexRule(name: "Xcode DerivedData", pattern: "DerivedData", kind: .folderName),
+                RegexRule(name: "Node dependencies", pattern: "node_modules/", kind: .gitignore),
+                RegexRule(name: "Python virtualenvs", pattern: ".venv/\nvenv/", kind: .gitignore),
+                RegexRule(name: "Xcode DerivedData", pattern: "DerivedData/", kind: .gitignore),
                 RegexRule(name: "Ruby vendor bundle", pattern: "vendor/bundle/", kind: .gitignore),
                 RegexRule(name: "Build directories", pattern: "build/\n.build/\ndist/", kind: .gitignore)
             ],

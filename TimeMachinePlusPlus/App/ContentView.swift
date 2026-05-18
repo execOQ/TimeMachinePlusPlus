@@ -11,7 +11,7 @@ struct ContentView: View {
                     .disabled(store.isWorking)
             } detail: {
                 Group {
-                    switch store.selectedSelection ?? .section(.scanResults) {
+                    switch store.selectedSelection ?? .section(.exclusions) {
                     case .destination(let id):
                         TimeMachineCommandsView(
                             store: store,
@@ -21,12 +21,8 @@ struct ContentView: View {
                         .id("destination-\(id)")
                     case .section(let section):
                         switch section {
-                    case .rules:
-                        RulesView(store: store)
-                    case .manual:
-                        ManualExclusionsView(store: store)
-                    case .scanResults:
-                        ScanResultsView(store: store)
+                    case .exclusions:
+                        ExclusionsView(store: store)
                     case .commands:
                             TimeMachineCommandsView(store: store, showsInternalSidebar: false)
                                 .id("time-machine-overview")
@@ -65,7 +61,11 @@ struct ContentView: View {
             }
 
             if store.isWorking {
-                BlockingOperationOverlay(title: store.operationTitle ?? "Working")
+                BlockingOperationOverlay(
+                    title: store.operationTitle ?? "Working",
+                    canCancel: store.canCancelCurrentOperation,
+                    onCancel: { store.cancelOperation() }
+                )
             }
         }
     }
@@ -183,12 +183,8 @@ struct SidebarView: View {
             }
 
             Section("Exclusions") {
-                Label(SidebarSection.scanResults.rawValue, systemImage: SidebarSection.scanResults.systemImage)
-                    .tag(AppSidebarSelection.section(.scanResults))
-                Label(SidebarSection.rules.rawValue, systemImage: SidebarSection.rules.systemImage)
-                    .tag(AppSidebarSelection.section(.rules))
-                Label(SidebarSection.manual.rawValue, systemImage: SidebarSection.manual.systemImage)
-                    .tag(AppSidebarSelection.section(.manual))
+                Label(SidebarSection.exclusions.rawValue, systemImage: SidebarSection.exclusions.systemImage)
+                    .tag(AppSidebarSelection.section(.exclusions))
             }
 
             Section("App") {
@@ -272,6 +268,8 @@ struct StatusBarView: View {
 
 private struct BlockingOperationOverlay: View {
     var title: String
+    var canCancel: Bool
+    var onCancel: () -> Void
 
     var body: some View {
         ZStack {
@@ -283,10 +281,15 @@ private struct BlockingOperationOverlay: View {
                     .controlSize(.regular)
                 Text(title)
                     .font(.headline)
-                Text("Time Machine is working. This window will unlock when the command finishes.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
+                if canCancel {
+                    Button("Cancel", role: .cancel, action: onCancel)
+                        .padding(.top, 4)
+                } else {
+                    Text("This window will unlock when the operation finishes.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
             }
             .padding(24)
             .frame(width: 340)
