@@ -10,7 +10,7 @@ final class TimeMachinePlusPlusTests: XCTestCase {
         XCTAssertNotNil(RuleMatcher.validationError(for: invalidRule))
     }
 
-    func testScannerMatchesDirectoryFolderNameAndSkipsDescendants() throws {
+    func testScannerMatchesGitLikeDirectoryAndSkipsDescendants() throws {
         let root = FileManager.default.temporaryDirectory.standardizedFileURL
             .appendingPathComponent("TimeMachinePlusPlusTests-\(UUID().uuidString)", isDirectory: true)
         let nodeModules = root.appendingPathComponent("project/node_modules", isDirectory: true)
@@ -21,15 +21,39 @@ final class TimeMachinePlusPlusTests: XCTestCase {
         let settings = AppSettings(
             scanRoots: [root.path],
             backgroundScanningEnabled: false,
-            scanIntervalMinutes: 30,
+            scanIntervalMinutes: AppSettings.dailyScanIntervalMinutes,
             maxDepth: 8
         )
-        let rule = RegexRule(name: "Node", pattern: "node_modules", kind: .folderName)
+        let rule = RegexRule(name: "Node", pattern: "node_modules/", kind: .gitignore)
 
         let matches = FileSystemScanner().scan(settings: settings, rules: [rule])
 
         XCTAssertTrue(matches.keys.contains { $0.path == nodeModules.path })
         XCTAssertFalse(matches.keys.contains { $0.path == nested.path })
+    }
+
+    func testScannerCanPreviewOneRuleOnly() throws {
+        let root = FileManager.default.temporaryDirectory.standardizedFileURL
+            .appendingPathComponent("TimeMachinePlusPlusRulePreview-\(UUID().uuidString)", isDirectory: true)
+        let nodeModules = root.appendingPathComponent("project/node_modules", isDirectory: true)
+        let build = root.appendingPathComponent("project/build", isDirectory: true)
+        try FileManager.default.createDirectory(at: nodeModules, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: build, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let settings = AppSettings(
+            scanRoots: [root.path],
+            backgroundScanningEnabled: false,
+            scanIntervalMinutes: AppSettings.dailyScanIntervalMinutes,
+            maxDepth: 8
+        )
+
+        let matches = FileSystemScanner().scan(
+            settings: settings,
+            rule: RegexRule(name: "Build", pattern: "build/", kind: .gitignore)
+        )
+
+        XCTAssertEqual(matches.map(\.path), [build.path])
     }
 
     func testPersistedDefaultsIncludeUsefulTemplates() {
@@ -45,12 +69,35 @@ final class TimeMachinePlusPlusTests: XCTestCase {
         XCTAssertFalse(RuleMatcher.matches(path: "/Users/me/project/build.log", isDirectory: false, rule: rule))
     }
 
-    func testFolderNameRuleAcceptsMultipleNames() {
-        let rule = RegexRule(name: "Virtualenvs", pattern: ".venv, venv", kind: .folderName)
+    func testGitLikeRuleAcceptsMultipleDirectoryPatterns() {
+        let rule = RegexRule(name: "Virtualenvs", pattern: ".venv/\nvenv/", kind: .gitignore)
 
         XCTAssertTrue(RuleMatcher.matches(path: "/Users/me/app/.venv", isDirectory: true, rule: rule))
         XCTAssertTrue(RuleMatcher.matches(path: "/Users/me/app/venv", isDirectory: true, rule: rule))
         XCTAssertFalse(RuleMatcher.matches(path: "/Users/me/app/venv.txt", isDirectory: false, rule: rule))
+    }
+
+    func testBackgroundHelperDefaultsToDaily() {
+        XCTAssertEqual(AppSettings.defaults.scanIntervalMinutes, AppSettings.dailyScanIntervalMinutes)
+    }
+
+    func testQuickPreviewLimitDefaultsToTwentyFive() {
+        XCTAssertEqual(AppSettings.defaults.previewResultLimit, 25)
+    }
+
+    func testSettingsDecodeOldStateWithoutPreviewLimit() throws {
+        let json = """
+        {
+          "scanRoots": ["/Users/me"],
+          "backgroundScanningEnabled": true,
+          "scanIntervalMinutes": 1440,
+          "maxDepth": 7
+        }
+        """
+
+        let settings = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
+
+        XCTAssertEqual(settings.previewResultLimit, AppSettings.defaultPreviewResultLimit)
     }
 
     func testNetworkDestinationUsesMountedSparsebundleVolume() {
@@ -229,6 +276,18 @@ final class TimeMachinePlusPlusTests: XCTestCase {
         XCTAssertEqual(presentation.summary, "No backups found for host.")
         XCTAssertEqual(presentation.exitCode, 2)
         XCTAssertTrue(presentation.detail.contains("Try a different destination."))
+    }
+
+    func testQuotaFailureKeepsRealTmutilError() {
+        let presentation = TimeMachineCommandPresentationFormatter.presentation(
+            title: "Set Quota",
+            arguments: ["setquota", "destination", "500"],
+            result: CommandResult(exitCode: 1, output: "", errorOutput: "Quota is not supported for this destination.")
+        )
+
+        XCTAssertEqual(presentation.tone, .failure)
+        XCTAssertEqual(presentation.summary, "Quota is not supported for this destination.")
+        XCTAssertFalse(presentation.summary.localizedCaseInsensitiveContains("Full Disk Access"))
     }
 
     func testCommandPresentationSummarizesCompareChanges() {

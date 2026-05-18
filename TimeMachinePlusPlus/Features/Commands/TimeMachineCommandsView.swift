@@ -766,7 +766,7 @@ struct TimeMachineCommandsView: View {
                 let paths = knownExclusionPaths
 
                 if paths.isEmpty {
-                    Text("No known exclusions yet. Run a scan or add manual paths to check more locations.")
+                    Text("No known exclusions yet. Add specific rules or apply exclusions through backup readiness.")
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(paths, id: \.self) { path in
@@ -799,12 +799,6 @@ struct TimeMachineCommandsView: View {
                         Label("Refresh Status", systemImage: "arrow.clockwise")
                     }
                     .disabled(paths.isEmpty)
-
-                    Button {
-                        store.startScanNow()
-                    } label: {
-                        Label("Scan for More", systemImage: "text.magnifyingglass")
-                    }
                 }
             }
             .padding(8)
@@ -1150,7 +1144,10 @@ struct TimeMachineCommandsView: View {
                         result: commandResult
                     )
                     commandResults[resolvedContext] = presentation
-                    finalStatus = commandResult.isSuccess ? "\(resolvedTitle) finished" : "tmutil failed with exit \(commandResult.exitCode)"
+                    finalStatus = commandResult.isSuccess ? "\(resolvedTitle) finished" : presentation.summary
+                    if asAdministrator, !commandResult.isSuccess {
+                        store.refreshFullDiskAccessStatus()
+                    }
                 case .failure(let error):
                     commandResults[resolvedContext] = TimeMachineCommandPresentationFormatter.failure(
                         title: resolvedTitle,

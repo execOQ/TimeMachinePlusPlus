@@ -38,11 +38,6 @@ struct TimeMachinePlusPlusApp: App {
         }
         .commands {
             CommandGroup(after: .newItem) {
-                Button("Scan Now") {
-                    Task { await store.scanNow() }
-                }
-                .keyboardShortcut("r", modifiers: [.command])
-
                 Button("Scan + Start Backup") {
                     Task { await store.scanAndStartBackup() }
                 }

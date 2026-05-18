@@ -9,7 +9,7 @@ final class AppStateStore: ObservableObject {
     @Published var settings: AppSettings = .defaults
     @Published var snapshotSizeCache: [String: Int64] = [:]
     @Published var matches: [ScanMatch] = []
-    @Published var selectedSelection: AppSidebarSelection? = .section(.exclusions)
+    @Published var selectedSelection: AppSidebarSelection? = .section(.exclusionRules)
     @Published var statusMessage = "Ready"
     @Published var lastScanDate: Date?
     @Published var isWorking = false
@@ -38,6 +38,7 @@ final class AppStateStore: ObservableObject {
 
     func load() {
         var state = storage.load()
+        var shouldSaveMigratedState = false
 
         // Migrate legacy manual exclusions into specific rules
         if !state.manualExclusions.isEmpty {
@@ -47,10 +48,27 @@ final class AppStateStore: ObservableObject {
                 .map { manual in
                     let name = URL(fileURLWithPath: manual.path).lastPathComponent
                     return RegexRule(name: name, pattern: manual.path, kind: .specific, isEnabled: manual.isEnabled, includeFiles: true)
-                }
+            }
             state.rules.append(contentsOf: migrated)
             state.manualExclusions = []
-            storage.save(PersistedState(rules: state.rules, manualExclusions: [], appliedExclusions: state.appliedExclusions, settings: state.settings))
+            shouldSaveMigratedState = true
+        }
+
+        if state.settings.scanIntervalMinutes == 30 {
+            state.settings.scanIntervalMinutes = AppSettings.dailyScanIntervalMinutes
+            shouldSaveMigratedState = true
+        }
+
+        if shouldSaveMigratedState {
+            storage.save(
+                PersistedState(
+                    rules: state.rules,
+                    manualExclusions: [],
+                    appliedExclusions: state.appliedExclusions,
+                    settings: state.settings,
+                    snapshotSizeCache: state.snapshotSizeCache
+                )
+            )
         }
 
         rules = state.rules
@@ -326,6 +344,52 @@ final class AppStateStore: ObservableObject {
         matches[index].isSelected = isSelected
     }
 
+    func previewMatches(for rule: RegexRule) async -> [RulePreviewResult] {
+        guard rule.isEnabled, RuleMatcher.validationError(for: rule) == nil else { return [] }
+
+        if rule.kind == .specific {
+            let path = rule.pattern.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !path.isEmpty else { return [] }
+
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) else {
+                return [
+                    RulePreviewResult(
+                        path: path,
+                        isDirectory: false,
+                        sizeBytes: nil,
+                        status: .missing
+                    )
+                ]
+            }
+
+            let excluded = await Task.detached(priority: .userInitiated) { [timeMachine] in
+                (try? timeMachine.isExcluded(path: path)) ?? false
+            }.value
+
+            return [
+                RulePreviewResult(
+                    path: path,
+                    isDirectory: isDirectory.boolValue,
+                    sizeBytes: nil,
+                    status: excluded ? .excluded : .included
+                )
+            ]
+        }
+
+        let candidates = await Task.detached(priority: .userInitiated) { [settings, scanner] in
+            scanner.scan(settings: settings, rule: rule, limit: settings.previewResultLimit)
+        }.value
+        return candidates.map { candidate in
+            RulePreviewResult(
+                path: candidate.path,
+                isDirectory: candidate.isDirectory,
+                sizeBytes: candidate.sizeBytes,
+                status: .matched
+            )
+        }
+    }
+
     func scanNow() async {
         statusMessage = "Scanning..."
 
@@ -436,7 +500,7 @@ final class AppStateStore: ObservableObject {
         save()
         statusMessage = failures.isEmpty
             ? "Applied \(applied) exclusions"
-            : "Applied \(applied), failed \(failures.count). Check Full Disk Access."
+            : "Applied \(applied), failed \(failures.count)."
         await scanNow()
     }
 
@@ -459,6 +523,46 @@ final class AppStateStore: ObservableObject {
         case .failure(let error):
             statusMessage = "Could not remove exclusion: \(error.localizedDescription)"
         }
+    }
+
+    func removeApplied(_ exclusions: [AppliedExclusion]) async {
+        guard canEdit else { return }
+        let targets = exclusions.filter { target in
+            appliedExclusions.contains { $0.id == target.id }
+        }
+        guard !targets.isEmpty else {
+            statusMessage = "No exclusions selected"
+            return
+        }
+
+        var removedIDs = Set<UUID>()
+        var failed = 0
+
+        for exclusion in targets {
+            let result = await Task.detached(priority: .userInitiated) { [timeMachine] in
+                Result { try timeMachine.removeExclusion(path: exclusion.path) }
+            }.value
+
+            switch result {
+            case .success(let commandResult) where commandResult.isSuccess:
+                removedIDs.insert(exclusion.id)
+                if let index = matches.firstIndex(where: { $0.path == exclusion.path }) {
+                    matches[index].isExcluded = false
+                    matches[index].isSelected = true
+                }
+            default:
+                failed += 1
+            }
+        }
+
+        if !removedIDs.isEmpty {
+            appliedExclusions.removeAll { removedIDs.contains($0.id) }
+            save()
+        }
+
+        statusMessage = failed == 0
+            ? "Removed \(removedIDs.count) exclusions"
+            : "Removed \(removedIDs.count), failed \(failed)"
     }
 
     func scanAndStartBackup() async {
@@ -513,7 +617,8 @@ enum AppSidebarSelection: Hashable {
 }
 
 enum SidebarSection: String, CaseIterable, Identifiable {
-    case exclusions = "Exclusions"
+    case exclusionRules = "Rules"
+    case appManagedExclusions = "App-Managed"
     case commands = "Time Machine"
     case settings = "Settings"
 
@@ -521,7 +626,8 @@ enum SidebarSection: String, CaseIterable, Identifiable {
 
     var systemImage: String {
         switch self {
-        case .exclusions: return "minus.circle"
+        case .exclusionRules: return "text.magnifyingglass"
+        case .appManagedExclusions: return "checklist.checked"
         case .commands: return "terminal"
         case .settings: return "gearshape"
         }

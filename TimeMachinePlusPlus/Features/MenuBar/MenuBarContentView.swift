@@ -38,10 +38,6 @@ struct MenuBarContentView: View {
                     store.cancelOperation()
                 }
             } else {
-                Button("Scan Now") {
-                    store.startScanNow()
-                }
-
                 Button("Scan + Start Backup") {
                     store.startScanAndBackup()
                 }

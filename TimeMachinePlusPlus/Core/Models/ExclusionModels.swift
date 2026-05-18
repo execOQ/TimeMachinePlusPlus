@@ -105,18 +105,50 @@ struct ManualExclusion: Identifiable, Codable, Hashable {
 }
 
 struct AppSettings: Codable, Hashable {
+    static let dailyScanIntervalMinutes = 24 * 60
+    static let defaultPreviewResultLimit = 25
+
     var scanRoots: [String]
     var backgroundScanningEnabled: Bool
     var scanIntervalMinutes: Int
     var maxDepth: Int
+    var previewResultLimit: Int
 
     static var defaults: AppSettings {
         AppSettings(
             scanRoots: [FileManager.default.homeDirectoryForCurrentUser.path],
             backgroundScanningEnabled: true,
-            scanIntervalMinutes: 30,
-            maxDepth: 7
+            scanIntervalMinutes: dailyScanIntervalMinutes,
+            maxDepth: 7,
+            previewResultLimit: defaultPreviewResultLimit
         )
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case scanRoots, backgroundScanningEnabled, scanIntervalMinutes, maxDepth, previewResultLimit
+    }
+
+    init(
+        scanRoots: [String],
+        backgroundScanningEnabled: Bool,
+        scanIntervalMinutes: Int,
+        maxDepth: Int,
+        previewResultLimit: Int = defaultPreviewResultLimit
+    ) {
+        self.scanRoots = scanRoots
+        self.backgroundScanningEnabled = backgroundScanningEnabled
+        self.scanIntervalMinutes = scanIntervalMinutes
+        self.maxDepth = maxDepth
+        self.previewResultLimit = previewResultLimit
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        scanRoots = try c.decode([String].self, forKey: .scanRoots)
+        backgroundScanningEnabled = try c.decode(Bool.self, forKey: .backgroundScanningEnabled)
+        scanIntervalMinutes = try c.decode(Int.self, forKey: .scanIntervalMinutes)
+        maxDepth = try c.decode(Int.self, forKey: .maxDepth)
+        previewResultLimit = try c.decodeIfPresent(Int.self, forKey: .previewResultLimit) ?? Self.defaultPreviewResultLimit
     }
 }
 
@@ -157,6 +189,30 @@ struct ScanMatch: Identifiable, Hashable {
     var plannedAction: String {
         isExcluded ? "Already excluded" : (isSelected ? "Will exclude" : "Skipped")
     }
+}
+
+struct RulePreviewResult: Identifiable, Hashable {
+    enum Status: Hashable {
+        case excluded
+        case included
+        case missing
+        case matched
+
+        var label: String {
+            switch self {
+            case .excluded: return "Excluded"
+            case .included: return "Included"
+            case .missing: return "Missing"
+            case .matched: return "Matched"
+            }
+        }
+    }
+
+    var id: String { path }
+    var path: String
+    var isDirectory: Bool
+    var sizeBytes: Int64?
+    var status: Status
 }
 
 struct PersistedState: Codable {

@@ -11,7 +11,7 @@ struct ContentView: View {
                     .disabled(store.isWorking)
             } detail: {
                 Group {
-                    switch store.selectedSelection ?? .section(.exclusions) {
+                    switch store.selectedSelection ?? .section(.exclusionRules) {
                     case .destination(let id):
                         TimeMachineCommandsView(
                             store: store,
@@ -21,13 +21,15 @@ struct ContentView: View {
                         .id("destination-\(id)")
                     case .section(let section):
                         switch section {
-                    case .exclusions:
-                        ExclusionsView(store: store)
-                    case .commands:
+                        case .exclusionRules:
+                            ExclusionsView(store: store)
+                        case .appManagedExclusions:
+                            AppManagedExclusionsView(store: store)
+                        case .commands:
                             TimeMachineCommandsView(store: store, showsInternalSidebar: false)
                                 .id("time-machine-overview")
-                    case .settings:
-                        SettingsView(store: store)
+                        case .settings:
+                            SettingsView(store: store)
                         }
                     }
                 }
@@ -83,20 +85,6 @@ struct ContentView: View {
                     .help("Cancel the current operation")
                 }
             } else {
-                Button {
-                    store.startScanNow()
-                } label: {
-                    Label("Scan", systemImage: "arrow.clockwise")
-                }
-                .help("Scan now")
-
-                Button {
-                    store.startApplySelectedMatches()
-                } label: {
-                    Label("Exclude", systemImage: "minus.circle")
-                }
-                .help("Apply selected exclusions")
-
                 if store.backupStatus.isRunning {
                     Button(role: .destructive) {
                         Task { await stopRunningBackup() }
@@ -183,8 +171,10 @@ struct SidebarView: View {
             }
 
             Section("Exclusions") {
-                Label(SidebarSection.exclusions.rawValue, systemImage: SidebarSection.exclusions.systemImage)
-                    .tag(AppSidebarSelection.section(.exclusions))
+                Label(SidebarSection.exclusionRules.rawValue, systemImage: SidebarSection.exclusionRules.systemImage)
+                    .tag(AppSidebarSelection.section(.exclusionRules))
+                Label(SidebarSection.appManagedExclusions.rawValue, systemImage: SidebarSection.appManagedExclusions.systemImage)
+                    .tag(AppSidebarSelection.section(.appManagedExclusions))
             }
 
             Section("App") {
