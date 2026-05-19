@@ -4,18 +4,7 @@ TimeMachine++ is a local macOS utility for managing Time Machine exclusions with
 
 ## Notes
 
-- Time Machine does not expose a public pre-backup hook, so the app supports background readiness scans and a precise `Scan + Start Backup` action.
-- Exclusions are applied through `/usr/bin/tmutil addexclusion`.
-- Full Disk Access may be required for scanning protected folders or applying exclusions.
-
-## Project
-
-Open `TimeMachinePlusPlus.xcodeproj` in Xcode. The app source is organized like:
-
-- `TimeMachinePlusPlus/App`
-- `TimeMachinePlusPlus/Core`
-- `TimeMachinePlusPlus/Features`
-- `TimeMachinePlusPlusTests`
+- Exclusions are applied as file attributes. Time Machine respects them, but they won't appear in System Settings
 
 ## Run
 

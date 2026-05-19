@@ -1,8 +1,9 @@
 import SwiftUI
 
 struct HeaderView<Actions: View>: View {
-    var title: String
-    var subtitle: String
+    var title: LocalizedStringKey
+    var subtitle: LocalizedStringKey
+    var additionalSubtitle: LocalizedStringKey? = nil
     @ViewBuilder var actions: () -> Actions
 
     var body: some View {
@@ -10,10 +11,16 @@ struct HeaderView<Actions: View>: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(.title2.weight(.semibold))
+
                 Text(subtitle)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
+                    .overlay(alignment: .topTrailing) {
+                        if let additionalSubtitle {
+                            InfoPopView(additionalSubtitle)
+                        }
+                    }
             }
 
             Spacer()
@@ -23,6 +30,6 @@ struct HeaderView<Actions: View>: View {
             }
         }
         .padding(20)
-        .background(.bar)
+        .background(.ultraThinMaterial)
     }
 }

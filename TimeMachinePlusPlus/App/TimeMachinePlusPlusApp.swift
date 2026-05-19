@@ -40,8 +40,8 @@ struct TimeMachinePlusPlusApp: App {
         }
         .commands {
             CommandGroup(after: .newItem) {
-                Button("Scan + Start Backup") {
-                    store.startScanAndBackup()
+                Button(store.startActionTitle) {
+                    store.startConfiguredStartAction()
                 }
                 .keyboardShortcut("b", modifiers: [.command, .shift])
 

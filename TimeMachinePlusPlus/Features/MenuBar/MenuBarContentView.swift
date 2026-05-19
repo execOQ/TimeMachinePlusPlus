@@ -38,8 +38,8 @@ struct MenuBarContentView: View {
                     store.cancelOperation()
                 }
             } else {
-                Button("Scan + Start Backup") {
-                    store.startScanAndBackup()
+                Button(store.startActionTitle) {
+                    store.startConfiguredStartAction()
                 }
             }
 

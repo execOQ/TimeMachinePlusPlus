@@ -41,22 +41,26 @@ struct TimeMachineCommandsView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            HeaderView(
-                title: "Time Machine",
-                subtitle: "Native controls for destinations, backups, snapshots, exclusions, and diagnostics."
-            ) {
-                Button {
-                    store.refreshFullDiskAccessStatus()
-                    openFullDiskAccessSettings()
-                } label: {
-                    Label(
-                        store.fullDiskAccessStatus.isGranted ? "Full Disk Access" : "Full Disk Access",
-                        systemImage: store.fullDiskAccessStatus.isGranted ? "lock.open" : "lock"
-                    )
-                }
-                .help(store.fullDiskAccessStatus.label)
+        PageView(title: "Time Machine", subtitle: "Native controls for destinations, backups, snapshots, exclusions, and diagnostics") {
+            VStack(spacing: 0) {
+                HSplitView {
+                    if showsInternalSidebar {
+                        nativeSidebar
+                            .frame(minWidth: 270, idealWidth: 320)
+                    }
 
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 18) {
+                            detailView
+                        }
+                        .padding(20)
+                    }
+                    .frame(minWidth: 560)
+                }
+            }
+        }
+        .toolbar {
+            ToolbarItem {
                 Button {
                     refresh()
                 } label: {
@@ -65,28 +69,16 @@ struct TimeMachineCommandsView: View {
                 .disabled(store.isWorking)
             }
 
-            HSplitView {
-                if showsInternalSidebar {
-                    nativeSidebar
-                        .frame(minWidth: 270, idealWidth: 320)
-                }
-
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
-                        detailView
-                    }
-                    .padding(20)
-                }
-                .frame(minWidth: 560)
-            }
+            toolbarOperationItems
         }
         .onAppear {
             if case .destination(let id) = selection,
-               !store.timeMachineDestinations.contains(where: { $0.id == id }) {
+               !store.timeMachineDestinations.contains(where: { $0.id == id })
+            {
                 selection = .backups
             }
         }
-        .onChange(of: selection) { _, _ in
+        .onChange(of: selection) {
             selectedSnapshots.removeAll()
         }
         .confirmationDialog(
@@ -101,6 +93,88 @@ struct TimeMachineCommandsView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text(pendingDestructiveAction?.message ?? "")
+        }
+    }
+
+    private func pickAndSetDestination(shouldAppend: Bool) {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.prompt = shouldAppend ? "Add" : "Replace"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        Task {
+            let client = LiveTimeMachineClient()
+            var arguments = ["setdestination"]
+            if shouldAppend {
+                arguments.append("-a")
+            }
+            arguments.append(url.path)
+            let result = try? client.run(arguments: arguments, asAdministrator: true)
+            await MainActor.run {
+                store.statusMessage = result?.isSuccess == true ? "Destination updated" : "Could not update destination"
+            }
+            await store.refreshTimeMachineState()
+        }
+    }
+
+    private func stopRunningBackup() async {
+        let client = LiveTimeMachineClient()
+        _ = try? client.stopBackup()
+        await store.refreshTimeMachineState()
+        store.statusMessage = "Stop backup requested"
+    }
+
+    @ToolbarContentBuilder
+    private var toolbarOperationItems: some ToolbarContent {
+        ToolbarItem {
+            Menu {
+                Button {
+                    pickAndSetDestination(shouldAppend: true)
+                } label: {
+                    Label("Add Destination", systemImage: "plus")
+                }
+
+                Button {
+                    pickAndSetDestination(shouldAppend: false)
+                } label: {
+                    Label("Replace Destinations", systemImage: "externaldrive")
+                }
+            } label: {
+                Label("Add", systemImage: "plus")
+            }
+            .help("Add or replace Time Machine destinations")
+            .disabled(store.isWorking)
+        }
+
+        ToolbarItem {
+            if store.isWorking {
+                if store.canCancelCurrentOperation {
+                    Button(role: .cancel) {
+                        store.cancelOperation()
+                    } label: {
+                        Label("Cancel", systemImage: "xmark.circle")
+                    }
+                    .help("Cancel the current operation")
+                }
+            } else {
+                if store.backupStatus.isRunning {
+                    Button(role: .destructive) {
+                        Task { await stopRunningBackup() }
+                    } label: {
+                        Label("Stop", systemImage: "stop.fill")
+                    }
+                    .help("Stop the running Time Machine backup")
+                } else {
+                    Button {
+                        store.startConfiguredStartAction()
+                    } label: {
+                        Label("Start", systemImage: "play.fill")
+                    }
+                    .help(store.startActionHelp)
+                }
+            }
         }
     }
 
@@ -686,7 +760,7 @@ struct TimeMachineCommandsView: View {
         }
     }
 
-    nonisolated private static func diskUsageKB(path: String) -> Int64? {
+    private nonisolated static func diskUsageKB(path: String) -> Int64? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/du")
         process.arguments = ["-sk", path]
@@ -914,12 +988,6 @@ struct TimeMachineCommandsView: View {
                         }
 
                         HStack(spacing: 10) {
-                        Button {
-                            openFullDiskAccessSettings()
-                        } label: {
-                            Label("Open Full Disk Access", systemImage: "gearshape")
-                        }
-
                             Button {
                                 revealCurrentAppInFinder()
                             } label: {
@@ -1248,11 +1316,6 @@ struct TimeMachineCommandsView: View {
         value.wrappedValue = url.path
     }
 
-    private func openFullDiskAccessSettings() {
-        FullDiskAccessSupport.openSystemSettings()
-        store.statusMessage = "Opened Full Disk Access settings"
-    }
-
     private func revealCurrentAppInFinder() {
         FullDiskAccessSupport.revealCurrentAppInFinder()
         store.statusMessage = "Revealed the app that needs Full Disk Access"
@@ -1328,8 +1391,6 @@ private enum DestructiveAction: Identifiable {
         }
     }
 }
-
-
 
 private struct InlineCommandProgress: View {
     var title: String

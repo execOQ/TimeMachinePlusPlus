@@ -38,29 +38,6 @@ struct ContentView: View {
                     StatusBarView(store: store)
                 }
             }
-            .toolbar {
-                ToolbarItemGroup {
-                    Menu {
-                        Button {
-                            pickAndSetDestination(shouldAppend: true)
-                        } label: {
-                            Label("Add Destination", systemImage: "plus")
-                        }
-
-                        Button {
-                            pickAndSetDestination(shouldAppend: false)
-                        } label: {
-                            Label("Replace Destinations", systemImage: "externaldrive")
-                        }
-                    } label: {
-                        Label("Add", systemImage: "plus")
-                    }
-                    .help("Add or replace Time Machine destinations")
-                    .disabled(store.isWorking)
-                }
-
-                toolbarOperationItems
-            }
 
             if store.isWorking {
                 BlockingOperationOverlay(
@@ -72,68 +49,6 @@ struct ContentView: View {
                 )
             }
         }
-    }
-
-    @ToolbarContentBuilder
-    private var toolbarOperationItems: some ToolbarContent {
-        ToolbarItemGroup {
-            if store.isWorking {
-                if store.canCancelCurrentOperation {
-                    Button(role: .cancel) {
-                        store.cancelOperation()
-                    } label: {
-                        Label("Cancel", systemImage: "xmark.circle")
-                    }
-                    .help("Cancel the current operation")
-                }
-            } else {
-                if store.backupStatus.isRunning {
-                    Button(role: .destructive) {
-                        Task { await stopRunningBackup() }
-                    } label: {
-                        Label("Stop", systemImage: "stop.fill")
-                    }
-                    .help("Stop the running Time Machine backup")
-                } else {
-                    Button {
-                        store.startScanAndBackup()
-                    } label: {
-                        Label("Start", systemImage: "play.fill")
-                    }
-                    .help("Scan, apply exclusions, then start Time Machine backup")
-                }
-            }
-        }
-    }
-
-    private func pickAndSetDestination(shouldAppend: Bool) {
-        let panel = NSOpenPanel()
-        panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.prompt = shouldAppend ? "Add" : "Replace"
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-
-        Task {
-            let client = LiveTimeMachineClient()
-            var arguments = ["setdestination"]
-            if shouldAppend {
-                arguments.append("-a")
-            }
-            arguments.append(url.path)
-            let result = try? client.run(arguments: arguments, asAdministrator: true)
-            await MainActor.run {
-                store.statusMessage = result?.isSuccess == true ? "Destination updated" : "Could not update destination"
-            }
-            await store.refreshTimeMachineState()
-        }
-    }
-
-    private func stopRunningBackup() async {
-        let client = LiveTimeMachineClient()
-        _ = try? client.stopBackup()
-        await store.refreshTimeMachineState()
-        store.statusMessage = "Stop backup requested"
     }
 }
 
@@ -259,7 +174,7 @@ struct StatusBarView: View {
         .font(.caption)
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
-        .background(.bar)
+        .background(.ultraThinMaterial)
     }
 }
 

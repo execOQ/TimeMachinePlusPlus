@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xcodebuild -scheme TimeMachinePlusPlus -destination 'platform=macOS' build)"
+    ]
+  }
+}

@@ -85,7 +85,11 @@ final class TimeMachinePlusPlusTests: XCTestCase {
         XCTAssertEqual(AppSettings.defaults.previewResultLimit, 25)
     }
 
-    func testSettingsDecodeOldStateWithoutPreviewLimit() throws {
+    func testStartButtonDefaultsToStartingBackup() {
+        XCTAssertTrue(AppSettings.defaults.startButtonStartsBackup)
+    }
+
+    func testSettingsDecodeOldStateWithoutNewSettings() throws {
         let json = """
         {
           "scanRoots": ["/Users/me"],
@@ -98,6 +102,7 @@ final class TimeMachinePlusPlusTests: XCTestCase {
         let settings = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
 
         XCTAssertEqual(settings.previewResultLimit, AppSettings.defaultPreviewResultLimit)
+        XCTAssertTrue(settings.startButtonStartsBackup)
     }
 
     func testNetworkDestinationUsesMountedSparsebundleVolume() {
