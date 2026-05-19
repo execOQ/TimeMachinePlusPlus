@@ -6,17 +6,33 @@ struct PersistedState: Codable {
     var appliedExclusions: [AppliedExclusion]
     var settings: AppSettings
     var snapshotSizeCache: [String: Int64]
+    var lastHelperScanDate: Date?
+    var lastHelperScannedItemCount: Int
+    var lastHelperAddedExclusionCount: Int
 
     private enum CodingKeys: String, CodingKey {
         case rules, manualExclusions, appliedExclusions, settings, snapshotSizeCache
+        case lastHelperScanDate, lastHelperScannedItemCount, lastHelperAddedExclusionCount
     }
 
-    init(rules: [RegexRule], manualExclusions: [ManualExclusion], appliedExclusions: [AppliedExclusion], settings: AppSettings, snapshotSizeCache: [String: Int64] = [:]) {
+    init(
+        rules: [RegexRule],
+        manualExclusions: [ManualExclusion],
+        appliedExclusions: [AppliedExclusion],
+        settings: AppSettings,
+        snapshotSizeCache: [String: Int64] = [:],
+        lastHelperScanDate: Date? = nil,
+        lastHelperScannedItemCount: Int = 0,
+        lastHelperAddedExclusionCount: Int = 0
+    ) {
         self.rules = rules
         self.manualExclusions = manualExclusions
         self.appliedExclusions = appliedExclusions
         self.settings = settings
         self.snapshotSizeCache = snapshotSizeCache
+        self.lastHelperScanDate = lastHelperScanDate
+        self.lastHelperScannedItemCount = lastHelperScannedItemCount
+        self.lastHelperAddedExclusionCount = lastHelperAddedExclusionCount
     }
 
     init(from decoder: Decoder) throws {
@@ -26,6 +42,9 @@ struct PersistedState: Codable {
         appliedExclusions = try c.decode([AppliedExclusion].self, forKey: .appliedExclusions)
         settings = try c.decode(AppSettings.self, forKey: .settings)
         snapshotSizeCache = try c.decodeIfPresent([String: Int64].self, forKey: .snapshotSizeCache) ?? [:]
+        lastHelperScanDate = try c.decodeIfPresent(Date.self, forKey: .lastHelperScanDate)
+        lastHelperScannedItemCount = try c.decodeIfPresent(Int.self, forKey: .lastHelperScannedItemCount) ?? 0
+        lastHelperAddedExclusionCount = try c.decodeIfPresent(Int.self, forKey: .lastHelperAddedExclusionCount) ?? 0
     }
 
     static var defaults: PersistedState {

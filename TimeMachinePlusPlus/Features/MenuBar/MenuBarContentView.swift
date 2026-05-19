@@ -17,6 +17,18 @@ struct MenuBarContentView: View {
                     .foregroundStyle(.secondary)
             }
 
+            if let helperScanSummary = store.helperScanSummary {
+                Text(helperScanSummary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .frame(maxWidth: 260, alignment: .leading)
+            } else {
+                Text("Helper scan: no runs yet")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Label(
                 store.isHelperInstalled ? "Helper installed" : "Helper not installed",
                 systemImage: store.isHelperInstalled ? "checkmark.circle.fill" : "xmark.circle"

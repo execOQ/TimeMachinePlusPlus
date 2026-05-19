@@ -76,14 +76,15 @@ extension AppStateStore {
         }
     }
 
-    func applySelectedMatches() async {
+    @discardableResult
+    func applySelectedMatches() async -> Int {
         let targets = matches.filter { $0.isSelected && !$0.isExcluded }
         guard !targets.isEmpty else {
             statusMessage = "Nothing new to exclude"
             if isCombinedStartOperation {
                 updateOperation(detail: "No new exclusions to apply", progress: 0.72)
             }
-            return
+            return 0
         }
 
         var applied = 0
@@ -94,7 +95,7 @@ extension AppStateStore {
             guard !Task.isCancelled else {
                 statusMessage = "Cancelled after applying \(applied) exclusions"
                 save()
-                return
+                return applied
             }
 
             if isCombinedStartOperation, offset == 0 || offset == targets.count - 1 || offset.isMultiple(of: progressUpdateStride) {
@@ -130,6 +131,7 @@ extension AppStateStore {
         } else {
             await scanNow()
         }
+        return applied
     }
 
     func removeApplied(_ exclusion: AppliedExclusion) async {

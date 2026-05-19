@@ -17,7 +17,12 @@ struct TimeMachinePlusPlusApp: App {
                 store.load()
                 _ = store.beginBlockingOperation(title: "Background Scan")
                 await store.scanNow()
-                await store.applySelectedMatches()
+                let scannedItemCount = store.matches.count
+                let addedExclusionCount = await store.applySelectedMatches()
+                store.recordHelperScan(
+                    scannedItemCount: scannedItemCount,
+                    addedExclusionCount: addedExclusionCount
+                )
                 store.finishBlockingOperation(status: store.statusMessage)
                 NSApp.terminate(nil)
             }

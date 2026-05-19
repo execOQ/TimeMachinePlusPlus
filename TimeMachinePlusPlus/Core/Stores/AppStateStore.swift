@@ -14,6 +14,9 @@ final class AppStateStore {
     var selectedSelection: AppSidebarSelection = .section(.exclusionRules)
     var statusMessage = "Ready"
     var lastScanDate: Date?
+    var lastHelperScanDate: Date?
+    var lastHelperScannedItemCount = 0
+    var lastHelperAddedExclusionCount = 0
     var isWorking = false
     var canCancelCurrentOperation = true
     var operationTitle: String?
@@ -57,6 +60,11 @@ final class AppStateStore {
     }
     var isCombinedStartOperation: Bool {
         operationTitle == "Scan + Backup" || operationTitle == "Scan + Apply"
+    }
+    var helperScanSummary: String? {
+        guard let lastHelperScanDate else { return nil }
+        let relativeDate = Formatters.relativeDate.localizedString(for: lastHelperScanDate, relativeTo: Date())
+        return "Helper scan \(relativeDate): \(lastHelperScannedItemCount) files scanned, \(lastHelperAddedExclusionCount) added to exceptions"
     }
 
     init(timeMachine: TimeMachineClient = LiveTimeMachineClient()) {

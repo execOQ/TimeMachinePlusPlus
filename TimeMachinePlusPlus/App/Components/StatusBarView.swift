@@ -37,6 +37,12 @@ struct StatusBarView: View {
                 Text("Last scan \(Formatters.relativeDate.localizedString(for: lastScanDate, relativeTo: Date()))")
                     .foregroundStyle(.tertiary)
             }
+
+            if let helperScanSummary = store.helperScanSummary {
+                Text("· \(helperScanSummary)")
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
         }
         .font(.caption)
         .padding(.horizontal, 16)

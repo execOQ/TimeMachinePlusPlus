@@ -32,7 +32,10 @@ extension AppStateStore {
                     manualExclusions: [],
                     appliedExclusions: state.appliedExclusions,
                     settings: state.settings,
-                    snapshotSizeCache: state.snapshotSizeCache
+                    snapshotSizeCache: state.snapshotSizeCache,
+                    lastHelperScanDate: state.lastHelperScanDate,
+                    lastHelperScannedItemCount: state.lastHelperScannedItemCount,
+                    lastHelperAddedExclusionCount: state.lastHelperAddedExclusionCount
                 )
             )
         }
@@ -42,6 +45,9 @@ extension AppStateStore {
         appliedExclusions = state.appliedExclusions
         settings = state.settings
         snapshotSizeCache = state.snapshotSizeCache
+        lastHelperScanDate = state.lastHelperScanDate
+        lastHelperScannedItemCount = state.lastHelperScannedItemCount
+        lastHelperAddedExclusionCount = state.lastHelperAddedExclusionCount
         refreshHelperStatus()
         refreshFullDiskAccessStatus()
     }
@@ -190,9 +196,19 @@ extension AppStateStore {
                 manualExclusions: manualExclusions,
                 appliedExclusions: appliedExclusions,
                 settings: settings,
-                snapshotSizeCache: snapshotSizeCache
+                snapshotSizeCache: snapshotSizeCache,
+                lastHelperScanDate: lastHelperScanDate,
+                lastHelperScannedItemCount: lastHelperScannedItemCount,
+                lastHelperAddedExclusionCount: lastHelperAddedExclusionCount
             )
         )
+    }
+
+    func recordHelperScan(scannedItemCount: Int, addedExclusionCount: Int) {
+        lastHelperScanDate = Date()
+        lastHelperScannedItemCount = scannedItemCount
+        lastHelperAddedExclusionCount = addedExclusionCount
+        save()
     }
 
 }

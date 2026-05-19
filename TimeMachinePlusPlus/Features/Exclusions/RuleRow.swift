@@ -99,11 +99,9 @@ struct RuleRow: View {
                 .pickerStyle(.segmented)
                 .frame(width: 250)
 
-//                if rule.kind != .specific {
                 Toggle("Files", isOn: $rule.includeFiles)
                     .help("Allow this rule to match files as well as folders. Not applicable in 'specific' mode.")
                     .disabled(rule.kind == .specific)
-//                }
 
                 Spacer()
 
@@ -113,7 +111,8 @@ struct RuleRow: View {
                 .buttonStyle(.borderless)
                 .help("Delete rule")
             }
-            .padding(.leading, 6)
+            // to click on disclosure chevron without toggling on/off
+            .padding(.leading, 10)
         }
         .padding(.vertical, 8)
         .onChange(of: isExpanded) {
@@ -188,5 +187,3 @@ struct RuleRow: View {
         }
     }
 }
-
- 
