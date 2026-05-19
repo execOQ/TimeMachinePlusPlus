@@ -24,7 +24,7 @@ private struct RulePreviewKey: Equatable {
 
 struct RuleRow: View {
     @Binding var rule: RegexRule
-    @ObservedObject var store: AppStateStore
+    @Environment(AppStateStore.self) private var store
     var onDelete: () -> Void
     @State private var isExpanded = false
     @State private var isLoadingPreview = false
@@ -113,7 +113,7 @@ struct RuleRow: View {
                 .buttonStyle(.borderless)
                 .help("Delete rule")
             }
-            .padding(.leading, 2)
+            .padding(.leading, 6)
         }
         .padding(.vertical, 8)
         .onChange(of: isExpanded) {

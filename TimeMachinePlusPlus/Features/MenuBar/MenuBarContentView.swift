@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 struct MenuBarContentView: View {
-    @ObservedObject var store: AppStateStore
+    @Environment(AppStateStore.self) private var store
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {

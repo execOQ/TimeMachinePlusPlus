@@ -1,16 +1,15 @@
 import SwiftUI
 
 struct ExclusionsView: View {
-    @ObservedObject var store: AppStateStore
-
     var body: some View {
-        RulesView(store: store)
+        RulesView()
     }
 }
 
 struct AppManagedExclusionsView: View {
-    @ObservedObject var store: AppStateStore
+    @Environment(AppStateStore.self) private var store
     @State private var selection = Set<UUID>()
+    @State private var selectionPruneTask: Task<Void, Never>?
 
     private var selectedExclusions: [AppliedExclusion] {
         store.appliedExclusions.filter { selection.contains($0.id) }
@@ -27,11 +26,8 @@ struct AppManagedExclusionsView: View {
                     )
                 } else {
                     List(selection: $selection) {
-                        Text("Exclusions are applied as file attributes. Time Machine respects them, but they won't appear in System Settings")
-                            .boxContainer()
-
                         ForEach(store.appliedExclusions) { exclusion in
-                            AppManagedExclusionRow(exclusion: exclusion, store: store)
+                            AppManagedExclusionRow(exclusion: exclusion)
                                 .tag(exclusion.id)
                         }
                     }
@@ -53,7 +49,19 @@ struct AppManagedExclusionsView: View {
             }
         }
         .onChange(of: store.appliedExclusions) {
-            let validIDs = Set(store.appliedExclusions.map(\.id))
+            scheduleSelectionPrune()
+        }
+        .onDisappear {
+            selectionPruneTask?.cancel()
+        }
+    }
+
+    private func scheduleSelectionPrune() {
+        selectionPruneTask?.cancel()
+        let validIDs = Set(store.appliedExclusions.map(\.id))
+        selectionPruneTask = Task { @MainActor in
+            await Task.yield()
+            guard !Task.isCancelled else { return }
             selection = selection.intersection(validIDs)
         }
     }
@@ -61,14 +69,12 @@ struct AppManagedExclusionsView: View {
 
 private struct AppManagedExclusionRow: View {
     var exclusion: AppliedExclusion
-    @ObservedObject var store: AppStateStore
+    @Environment(AppStateStore.self) private var store
 
     var body: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(exclusion.path)
-                    .font(.system(.body, design: .monospaced))
-                    .truncationMode(.middle)
+                AppPathText(path: exclusion.path)
 
                 HStack(spacing: 2) {
                     Text(exclusion.appliedAt, style: .date)
@@ -105,17 +111,5 @@ private struct AppManagedExclusionRow: View {
                 Label("Remove Exclusion", systemImage: "trash")
             }
         }
-    }
-}
-
-extension View {
-    func boxContainer(color: Color = .secondary, cornerRadius: CGFloat = 6, padding: CGFloat = 6) -> some View {
-        self.padding(.horizontal, padding + 2)
-            .padding(.vertical, padding)
-            .background(color.opacity(0.06), in: RoundedRectangle(cornerRadius: cornerRadius))
-            .overlay(
-                RoundedRectangle(cornerRadius: cornerRadius)
-                    .stroke(color.opacity(0.15))
-            )
     }
 }

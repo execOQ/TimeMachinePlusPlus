@@ -1,15 +1,16 @@
 import AppKit
+import Observation
 import SwiftUI
 
 @main
 struct TimeMachinePlusPlusApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @Environment(\.openWindow) private var openWindow
-    @StateObject private var store: AppStateStore
+    @State private var store: AppStateStore
 
     init() {
         let store = AppStateStore()
-        _store = StateObject(wrappedValue: store)
+        _store = State(initialValue: store)
 
         if Self.isBackgroundScan {
             Task { @MainActor in
@@ -28,8 +29,9 @@ struct TimeMachinePlusPlusApp: App {
             if Self.isBackgroundScan {
                 BackgroundScanPlaceholder()
             } else {
-                ContentView(store: store)
+                ContentView()
                     .frame(minWidth: 980, minHeight: 640)
+                    .environment(store)
                     .task {
                         store.load()
                         if !Self.isRunningUnitTests {
@@ -44,15 +46,6 @@ struct TimeMachinePlusPlusApp: App {
                     store.startConfiguredStartAction()
                 }
                 .keyboardShortcut("b", modifiers: [.command, .shift])
-
-                Button("Show Time Machine Controls") {
-                    store.selectedSelection = .section(.commands)
-                    if !WindowFocus.focusMainWindow() {
-                        openWindow(id: "main")
-                    }
-                    NSApp.activate(ignoringOtherApps: true)
-                }
-                .keyboardShortcut("t", modifiers: [.command, .shift])
             }
         }
 
@@ -60,7 +53,8 @@ struct TimeMachinePlusPlusApp: App {
             if Self.isBackgroundScan {
                 EmptyView()
             } else {
-                MenuBarContentView(store: store)
+                MenuBarContentView()
+                    .environment(store)
             }
         }
     }
