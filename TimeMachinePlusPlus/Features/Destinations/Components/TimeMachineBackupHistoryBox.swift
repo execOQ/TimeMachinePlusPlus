@@ -8,18 +8,21 @@ private struct BackupPathRowItem: Identifiable {
 
 extension TimeMachineCommandSurface {
     func backupHistoryBox(for destination: TimeMachineDestination) -> some View {
-        AppSectionView(title: "Snapshots") {
+        let history = store.backupHistoriesByDestinationID[destination.id] ?? .empty(destinationID: destination.id)
+
+        return AppSectionView(title: "Snapshots") {
             VStack(alignment: .leading, spacing: 10) {
                 if let mountPoint = destination.mountPoint {
                     Label(mountPoint, systemImage: "externaldrive")
                         .font(.system(.caption, design: .monospaced))
                         .foregroundStyle(.secondary)
+                } else if destination.sparsebundlePath != nil || destination.shareMountPoint != nil {
+                    Label("Network share is mounted; attach the backup image to browse or measure individual snapshots.", systemImage: "network")
+                        .foregroundStyle(.secondary)
                 } else {
                     Label("Backup volume is not mounted", systemImage: "externaldrive.badge.xmark")
                         .foregroundStyle(.secondary)
                 }
-
-                let history = store.backupHistoriesByDestinationID[destination.id] ?? .empty(destinationID: destination.id)
 
                 if !history.backups.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
@@ -29,13 +32,17 @@ extension TimeMachineCommandSurface {
                                 Toggle("", isOn: snapshotBinding(backup))
                                     .labelsHidden()
                                     .toggleStyle(.checkbox)
-                                AppPathText(path: backup)
+                                backupPathLabel(backup)
                                 Spacer()
                                 if let size = store.snapshotSizeCache[backup] {
                                     Text(Formatters.fileSize(size))
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                         .monospacedDigit()
+                                } else if !isMeasurableBackupPath(backup) {
+                                    Text(isTimeMachineSnapshotPath(backup) ? "Not mounted" : "History only")
+                                        .font(.caption)
+                                        .foregroundStyle(.tertiary)
                                 } else if store.isMeasuringSizes {
                                     ProgressView().controlSize(.mini)
                                 }
@@ -140,25 +147,33 @@ extension TimeMachineCommandSurface {
                         if let mountPoint = destination.mountPoint {
                             run(arguments: ["listbackups", "-d", mountPoint], context: .destinationSnapshots(destination.id), title: "List Backups", status: "Listing backups...")
                         } else {
-                            run(arguments: ["listbackups"], context: .destinationSnapshots(destination.id), title: "List Backups", status: "Listing backups...")
+                            presentBackupHistoryList(history, destination: destination)
                         }
                     } label: {
                         primaryButtonLabel("List Backups", systemImage: "list.bullet.rectangle")
                     }
-                    .disabled(destination.mountPoint == nil)
-                    .help(destination.mountPoint == nil ? "The network share is mounted, but the Time Machine backup image is not mounted as a browsable snapshot volume." : "List backups for this destination")
+                    .disabled(destination.mountPoint == nil && history.backups.isEmpty)
+                    .help(destination.mountPoint == nil ? "Show backup history already loaded from this destination." : "List backups for this destination")
 
                     Button {
                         if let mountPoint = destination.mountPoint {
                             run(arguments: ["latestbackup", "-d", mountPoint], context: .destinationSnapshots(destination.id), title: "Latest Backup", status: "Finding latest backup...")
                         } else {
-                            run(arguments: ["latestbackup"], context: .destinationSnapshots(destination.id), title: "Latest Backup", status: "Finding latest backup...")
+                            presentLatestBackup(history, destination: destination)
                         }
                     } label: {
                         primaryButtonLabel("Latest", systemImage: "clock")
                     }
-                    .disabled(destination.mountPoint == nil)
-                    .help(destination.mountPoint == nil ? "The network share is mounted, but the Time Machine backup image is not mounted as a browsable snapshot volume." : "Find latest backup for this destination")
+                    .disabled(destination.mountPoint == nil && history.backups.isEmpty)
+                    .help(destination.mountPoint == nil ? "Show the latest backup already loaded from this destination." : "Find latest backup for this destination")
+
+                    Button {
+                        run(arguments: ["compare"] + Array(selectedSnapshots), context: .destinationSnapshots(destination.id), title: "Compare Selected", status: "Comparing selected snapshots...")
+                    } label: {
+                        primaryButtonLabel(compareSelectedTitle, systemImage: "arrow.left.arrow.right")
+                    }
+                    .disabled(selectedSnapshots.isEmpty)
+                    .help(selectedSnapshots.count == 1 ? "Compare the selected snapshot with the current Mac state." : "Compare the selected snapshots.")
 
                     Divider().frame(height: 16)
 
@@ -170,15 +185,43 @@ extension TimeMachineCommandSurface {
                         }
                         .foregroundStyle(.primary)
                     } else {
-                        let uncached = history.backups.filter { store.snapshotSizeCache[$0] == nil }
-                        Button {
-                            let toMeasure = uncached.isEmpty ? history.backups : uncached
-                            startMeasuringSizes(backups: toMeasure)
-                        } label: {
-                            primaryButtonLabel(uncached.isEmpty ? "Re-measure" : "Measure Sizes", systemImage: "ruler")
+                        let measurableBackups = measurableBackupEntries(in: history.backups)
+                        let uncached = measurableBackups.filter { store.snapshotSizeCache[$0.cacheKey] == nil }
+                        let unmeasuredHistoryOnlyBackups = history.backups.filter {
+                            store.snapshotSizeCache[$0] == nil && !isMeasurableBackupPath($0)
                         }
-                        .disabled(history.backups.isEmpty)
-                        .help(uncached.isEmpty ? "All sizes cached — click to re-measure" : "Measure total disk usage of each snapshot")
+                        let canAttachBackupImage = destination.sparsebundlePath != nil
+                        if measurableBackups.isEmpty, canAttachBackupImage {
+                            Button {
+                                requestBackupImageAttach(destination, measureAfterAttach: true)
+                            } label: {
+                                primaryButtonLabel("Attach + Measure", systemImage: "externaldrive.connected.to.line.below")
+                            }
+                            .help("Attach the sparsebundle image, refresh snapshot paths, then measure any mounted snapshots.")
+                        } else if uncached.isEmpty, !unmeasuredHistoryOnlyBackups.isEmpty, canAttachBackupImage {
+                            Button {
+                                requestBackupImageAttach(destination, measureAfterAttach: true)
+                            } label: {
+                                primaryButtonLabel("Attach + Measure Missing", systemImage: "externaldrive.connected.to.line.below")
+                            }
+                            .help("Known mounted snapshot sizes are cached. Attach the sparsebundle image to measure history-only snapshots that are still missing sizes.")
+                        } else if uncached.isEmpty, !unmeasuredHistoryOnlyBackups.isEmpty {
+                            Button {
+                            } label: {
+                                primaryButtonLabel("Snapshots Not Mounted", systemImage: "externaldrive.badge.xmark")
+                            }
+                            .disabled(true)
+                            .help("Unmeasured snapshots are history-only paths right now. Refresh or attach the backup image before measuring them.")
+                        } else {
+                            let title = uncached.isEmpty ? "All Measurable Sizes" : "Measure Sizes"
+                            Button {
+                                startMeasuringSizes(backups: uncached.map(\.measurementPath), cacheKeys: uncached.map(\.cacheKey))
+                            } label: {
+                                primaryButtonLabel(title, systemImage: "ruler")
+                            }
+                            .disabled(uncached.isEmpty)
+                            .help(measurableBackups.isEmpty ? "Attach the backup image first; these entries are sparsebundle history records, not mounted snapshot paths." : uncached.isEmpty ? "Known snapshot sizes are cached; history-only rows need a mounted image before they can be measured." : "Measure total disk usage of snapshots without cached sizes")
+                        }
                     }
                 }
 
@@ -187,5 +230,103 @@ extension TimeMachineCommandSurface {
         }
     }
 
+    @ViewBuilder
+    func backupPathLabel(_ path: String) -> some View {
+        if !isMeasurableBackupPath(path), isTimeMachineSnapshotPath(path) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(backupDisplayName(path))
+                    .font(.system(.body, design: .monospaced))
+                    .lineLimit(1)
+                AppPathText(path: path, style: .caption, isSelectable: true)
+                    .foregroundStyle(.tertiary)
+            }
+        } else {
+            AppPathText(path: path)
+        }
+    }
+
+    func backupDisplayName(_ path: String) -> String {
+        let components = URL(fileURLWithPath: path).pathComponents.reversed()
+        if let backupComponent = components.first(where: { $0.lowercased().hasSuffix(".backup") }) {
+            return "Snapshot \(backupComponent)"
+        }
+        return path
+    }
+
+    func isMeasurableBackupPath(_ path: String) -> Bool {
+        measurableBackupPath(for: path) != nil
+    }
+
+    func measurableBackupPath(for path: String) -> String? {
+        let candidates = backupPathMeasurementCandidates(for: path)
+        return candidates.first { FileManager.default.fileExists(atPath: $0) }
+    }
+
+    func backupPathMeasurementCandidates(for path: String) -> [String] {
+        var candidates = [path]
+        let url = URL(fileURLWithPath: path)
+        let last = url.lastPathComponent
+        let parent = url.deletingLastPathComponent()
+        if last.localizedCaseInsensitiveCompare(parent.lastPathComponent) == .orderedSame,
+           last.lowercased().hasSuffix(".backup") {
+            candidates.append(parent.path)
+        }
+
+        return candidates.reduce(into: [String]()) { result, candidate in
+            if !result.contains(candidate) {
+                result.append(candidate)
+            }
+        }
+    }
+
+    func measurableBackupEntries(in paths: [String]) -> [(cacheKey: String, measurementPath: String)] {
+        paths.compactMap { path in
+            measurableBackupPath(for: path).map { (cacheKey: path, measurementPath: $0) }
+        }
+    }
+
+    func isTimeMachineSnapshotPath(_ path: String) -> Bool {
+        let lowercasedPath = path.lowercased()
+        return lowercasedPath.hasPrefix("/volumes/.timemachine/")
+            && lowercasedPath.contains(".backup/")
+            && lowercasedPath.hasSuffix(".backup")
+    }
+
+    func presentBackupHistoryList(_ history: TimeMachineBackupHistory, destination: TimeMachineDestination) {
+        let context = TimeMachineCommandContext.destinationSnapshots(destination.id)
+        let detail = history.backups.joined(separator: "\n")
+        commandResults[context] = TimeMachineCommandPresentation(
+            title: "List Backups",
+            summary: "Listed \(history.backups.count) backup\(history.backups.count == 1 ? "" : "s") from loaded destination history.",
+            detail: detail.isEmpty ? "No backup history is loaded for \(destination.name)." : detail,
+            tone: history.backups.isEmpty ? .warning : .success,
+            exitCode: nil
+        )
+        store.statusMessage = history.backups.isEmpty ? "No loaded backup history" : "Listed loaded backup history"
+    }
+
+    func presentLatestBackup(_ history: TimeMachineBackupHistory, destination: TimeMachineDestination) {
+        let context = TimeMachineCommandContext.destinationSnapshots(destination.id)
+        let latest = history.backups.last
+        let exists = latest.map { FileManager.default.fileExists(atPath: $0) } ?? false
+        commandResults[context] = TimeMachineCommandPresentation(
+            title: "Latest Backup",
+            summary: latest == nil
+                ? "No loaded backup history for \(destination.name)."
+                : exists
+                    ? "Latest mounted backup from loaded destination history."
+                    : "Latest backup history record is not mounted.",
+            detail: latest.map { path in
+                exists
+                    ? path
+                    : "\(path)\n\nThis path is a Time Machine history record, but it does not currently exist on disk. Attach or remount the backup image before browsing, comparing, or measuring this snapshot."
+            } ?? "No backup history is loaded for \(destination.name).",
+            tone: latest == nil ? .warning : exists ? .success : .warning,
+            exitCode: nil
+        )
+        store.statusMessage = latest == nil
+            ? "No loaded backup history"
+            : exists ? "Latest backup found in loaded history" : "Latest backup is history-only"
+    }
 
 }

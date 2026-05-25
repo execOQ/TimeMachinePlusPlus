@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		A00100000000000000000001 /* TimeMachine++.app in Frameworks */ = {isa = PBXBuildFile; fileRef = A00200000000000000000001 /* TimeMachine++.app */; };
+		A00100000000000000000002 /* AppUpdater in Frameworks */ = {isa = PBXBuildFile; productRef = A01300000000000000000001 /* AppUpdater */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -35,6 +36,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A00100000000000000000002 /* AppUpdater in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -87,6 +89,7 @@
 			);
 			name = TimeMachinePlusPlus;
 			packageProductDependencies = (
+				A01300000000000000000001 /* AppUpdater */,
 			);
 			productName = "TimeMachine++";
 			productReference = A00200000000000000000001 /* TimeMachine++.app */;
@@ -144,6 +147,9 @@
 			);
 			mainGroup = A00500000000000000000001;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				A01400000000000000000001 /* XCRemoteSwiftPackageReference "AppUpdater" */,
+			);
 			productRefGroup = A00500000000000000000010 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -455,6 +461,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		A01400000000000000000001 /* XCRemoteSwiftPackageReference "AppUpdater" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/s1ntoneli/AppUpdater.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.2.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A01300000000000000000001 /* AppUpdater */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A01400000000000000000001 /* XCRemoteSwiftPackageReference "AppUpdater" */;
+			productName = AppUpdater;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = A00000000000000000000001 /* Project object */;
 }

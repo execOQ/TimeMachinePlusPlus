@@ -20,15 +20,11 @@ extension TimeMachineCommandSurface {
                     primaryButtonLabel("Start and Wait", systemImage: "hourglass")
                 }
 
-                Spacer()
-
                 Button(role: .destructive) {
                     pendingDestructiveAction = .stopBackup
                 } label: {
                     primaryButtonLabel("Stop Backup", systemImage: "stop.fill")
                 }
-                .buttonStyle(.borderless)
-                .foregroundStyle(.red.opacity(0.8))
                 .disabled(!store.backupStatus.isRunning)
             }
 
@@ -59,7 +55,7 @@ extension TimeMachineCommandSurface {
     func destinationView(_ destination: TimeMachineDestination?) -> some View {
         if let destination {
             VStack(alignment: .leading, spacing: 16) {
-                sectionHeader(destination.name, subtitle: destination.detail)
+                destinationSummaryBox(destination)
 
                 AppSectionView(title: "Destination Actions") {
                     VStack(alignment: .leading, spacing: 12) {
@@ -78,8 +74,8 @@ extension TimeMachineCommandSurface {
                             } label: {
                                 primaryButtonLabel("Remove Destination", systemImage: "trash")
                             }
-                            .buttonStyle(.borderless)
-                            .foregroundStyle(.red.opacity(0.8))
+                            .buttonStyle(.borderedProminent)
+                            .tint(.red)
                         }
 
                         Divider()
@@ -102,30 +98,22 @@ extension TimeMachineCommandSurface {
                     }
                 }
 
-                if let mountPoint = destination.mountPoint {
-                    storageBox(mountPoint: mountPoint)
-                }
-
                 backupHistoryBox(for: destination)
-
-                destinationRestoreCompareBox(destination: destination)
             }
             .task(id: destination.id) {
-                // Fetch volume stats async so UI doesn't block on network volumes
-                if let mountPoint = destination.mountPoint {
+                if destination.isNetworkShareMissing {
+                    await store.mountNetworkShareIfNeeded(for: destination)
+                    return
+                }
+
+                if let storagePath = storageStatsPath(for: destination) {
                     let stats = await Task.detached(priority: .utility) { () -> (Int64, Int64) in
-                        let attrs = try? FileManager.default.attributesOfFileSystem(forPath: mountPoint)
+                        let attrs = try? FileManager.default.attributesOfFileSystem(forPath: storagePath)
                         let total = (attrs?[.systemSize] as? Int64) ?? 0
                         let free = (attrs?[.systemFreeSize] as? Int64) ?? 0
                         return (total, free)
                     }.value
-                    volumeStats[mountPoint] = (stats.0, stats.1)
-                }
-                // Auto-measure any uncached snapshot sizes in the background
-                let backups = store.backupHistoriesByDestinationID[destination.id]?.backups ?? []
-                let uncached = backups.filter { store.snapshotSizeCache[$0] == nil }
-                if !uncached.isEmpty {
-                    startMeasuringSizes(backups: uncached)
+                    volumeStats[storagePath] = (stats.0, stats.1)
                 }
             }
         } else {

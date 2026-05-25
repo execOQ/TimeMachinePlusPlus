@@ -25,9 +25,16 @@ final class ProcessRegistry {
         lock.unlock()
         snapshot.forEach { $0.terminate() }
     }
+
+    func terminateMatching(_ predicate: (Process) -> Bool) {
+        lock.lock()
+        let snapshot = Array(processes.values)
+        lock.unlock()
+        snapshot.filter(predicate).forEach { $0.terminate() }
+    }
 }
 
-struct CommandResult: Equatable {
+struct CommandResult: Equatable, Sendable {
     var exitCode: Int32
     var output: String
     var errorOutput: String
@@ -45,6 +52,8 @@ protocol TimeMachineClient {
 }
 
 struct LiveTimeMachineClient: TimeMachineClient {
+    private let commandTimeoutSeconds: TimeInterval = 30
+
     func addExclusion(path: String) throws -> CommandResult {
         // xattr form only: -p requires admin and prompts for a password, which is too disruptive.
         // Time Machine fully respects xattr exclusions; they just don't appear in System Settings.
@@ -95,7 +104,7 @@ struct LiveTimeMachineClient: TimeMachineClient {
 
         ProcessRegistry.shared.register(process)
         try process.run()
-        process.waitUntilExit()
+        waitForProcess(process, timeout: commandTimeoutSeconds)
         ProcessRegistry.shared.deregister(process)
 
         let output = String(data: outputPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
@@ -118,7 +127,7 @@ struct LiveTimeMachineClient: TimeMachineClient {
 
         ProcessRegistry.shared.register(process)
         try process.run()
-        process.waitUntilExit()
+        waitForProcess(process, timeout: commandTimeoutSeconds)
         ProcessRegistry.shared.deregister(process)
 
         let output = String(data: outputPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
@@ -143,5 +152,23 @@ struct LiveTimeMachineClient: TimeMachineClient {
         "\"" + value
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"") + "\""
+    }
+
+    private func waitForProcess(_ process: Process, timeout: TimeInterval) {
+        let deadline = Date().addingTimeInterval(timeout)
+        while process.isRunning && Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+
+        if process.isRunning {
+            process.terminate()
+            Thread.sleep(forTimeInterval: 0.2)
+        }
+
+        if process.isRunning {
+            process.interrupt()
+        }
+
+        process.waitUntilExit()
     }
 }

@@ -24,6 +24,12 @@ struct TimeMachineDestination: Identifiable, Hashable {
         }
         return kind
     }
+
+    var isNetworkShareMissing: Bool {
+        kind.localizedCaseInsensitiveCompare("Network") == .orderedSame
+            && shareMountPoint == nil
+            && mountPoint == nil
+    }
 }
 
 struct TimeMachineBackupHistory: Equatable {

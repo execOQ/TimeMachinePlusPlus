@@ -2,14 +2,34 @@ import SwiftUI
 
 struct InlineCommandProgress: View {
     var title: String
+    var detail: String?
+    var onCancel: (() -> Void)?
 
     var body: some View {
         HStack(spacing: 10) {
             ProgressView()
                 .controlSize(.small)
-            Text(title)
-                .font(.callout)
-                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+
+                if let detail, !detail.isEmpty {
+                    Text(detail)
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .textSelection(.enabled)
+                }
+            }
+
+            Spacer()
+
+            if let onCancel {
+                Button("Cancel") {
+                    onCancel()
+                }
+                .controlSize(.small)
+            }
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -19,6 +39,7 @@ struct InlineCommandProgress: View {
 
 struct TimeMachineCommandResultCard: View {
     var result: TimeMachineCommandPresentation
+    @State private var isShowingDetails = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -38,14 +59,24 @@ struct TimeMachineCommandResultCard: View {
             }
 
             if result.hasDetail {
-                DisclosureGroup("Details") {
+                Button {
+                    withAnimation(.snappy(duration: 0.18)) {
+                        isShowingDetails.toggle()
+                    }
+                } label: {
+                    Label("Details", systemImage: isShowingDetails ? "chevron.down" : "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.primary)
+                }
+                .buttonStyle(.plain)
+
+                if isShowingDetails {
                     Text(result.detail)
                         .font(.system(.caption, design: .monospaced))
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .topLeading)
                         .padding(.top, 4)
                 }
-                .font(.caption)
             }
         }
         .padding(12)
@@ -55,6 +86,9 @@ struct TimeMachineCommandResultCard: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(tint.opacity(0.35), lineWidth: 1)
         )
+        .onChange(of: result) {
+            isShowingDetails = false
+        }
     }
 
     private var systemImage: String {

@@ -20,7 +20,6 @@ final class TimeMachinePlusPlusTests: XCTestCase {
 
         let settings = AppSettings(
             scanRoots: [root.path],
-            backgroundScanningEnabled: false,
             scanIntervalMinutes: AppSettings.dailyScanIntervalMinutes,
             maxDepth: 8
         )
@@ -43,7 +42,6 @@ final class TimeMachinePlusPlusTests: XCTestCase {
 
         let settings = AppSettings(
             scanRoots: [root.path],
-            backgroundScanningEnabled: false,
             scanIntervalMinutes: AppSettings.dailyScanIntervalMinutes,
             maxDepth: 8
         )
@@ -85,8 +83,12 @@ final class TimeMachinePlusPlusTests: XCTestCase {
         XCTAssertEqual(AppSettings.defaults.previewResultLimit, 25)
     }
 
-    func testStartButtonDefaultsToStartingBackup() {
-        XCTAssertTrue(AppSettings.defaults.startButtonStartsBackup)
+    func testStartButtonDefaultsToScanningOnly() {
+        XCTAssertFalse(AppSettings.defaults.startButtonStartsBackup)
+    }
+
+    func testAutomaticUpdateChecksDefaultToOn() {
+        XCTAssertTrue(AppSettings.defaults.automaticallyChecksForUpdates)
     }
 
     func testSettingsDecodeOldStateWithoutNewSettings() throws {
@@ -102,7 +104,22 @@ final class TimeMachinePlusPlusTests: XCTestCase {
         let settings = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
 
         XCTAssertEqual(settings.previewResultLimit, AppSettings.defaultPreviewResultLimit)
-        XCTAssertTrue(settings.startButtonStartsBackup)
+        XCTAssertFalse(settings.startButtonStartsBackup)
+        XCTAssertTrue(settings.automaticallyChecksForUpdates)
+    }
+
+    func testUpdateMenuBarIconReflectsUpdateState() {
+        XCTAssertEqual(AppUpdateStatus.idle.menuBarSystemImage, "clock.arrow.circlepath")
+        XCTAssertEqual(AppUpdateStatus.checking.menuBarSystemImage, "arrow.triangle.2.circlepath")
+        XCTAssertEqual(AppUpdateStatus.downloading.menuBarSystemImage, "arrow.triangle.2.circlepath")
+        XCTAssertEqual(AppUpdateStatus.readyToInstall.menuBarSystemImage, "arrow.down.circle.fill")
+        XCTAssertEqual(AppUpdateStatus.failed.menuBarSystemImage, "clock.arrow.circlepath")
+    }
+
+    func testUpdateNotificationDedupesSameRelease() {
+        XCTAssertTrue(AppUpdateNotificationPolicy.shouldNotify(version: "0.2.0", lastNotifiedVersion: nil))
+        XCTAssertTrue(AppUpdateNotificationPolicy.shouldNotify(version: "0.2.1", lastNotifiedVersion: "0.2.0"))
+        XCTAssertFalse(AppUpdateNotificationPolicy.shouldNotify(version: "0.2.0", lastNotifiedVersion: "0.2.0"))
     }
 
     func testNetworkDestinationUsesMountedSparsebundleVolume() {
@@ -256,6 +273,36 @@ final class TimeMachinePlusPlusTests: XCTestCase {
         XCTAssertEqual(snapshots.count, 2)
         XCTAssertTrue(snapshots.contains("/Volumes/.timemachine/29B2EE76-B698-4EA0-92DB-46CCF4327D89/2025-12-14-213031.backup"))
         XCTAssertFalse(snapshots.contains { $0.contains("localsnapshots") })
+    }
+
+    func testMountedBackupSnapshotPathsResolveFinderVisibleNames() throws {
+        let root = FileManager.default.temporaryDirectory.standardizedFileURL
+            .appendingPathComponent("TimeMachinePlusPlusMountedBackups-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: root.appendingPathComponent("2025-12-14-213031", isDirectory: true),
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.createDirectory(
+            at: root.appendingPathComponent("2026-04-02-152252", isDirectory: true),
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let paths = TimeMachineStateParser.mountedBackupSnapshotPaths(
+            destinationMountPoint: root.path,
+            backupPaths: [
+                "/Volumes/.timemachine/29B2EE76-B698-4EA0-92DB-46CCF4327D89/2025-12-14-213031.backup/2025-12-14-213031.backup",
+                "/Volumes/.timemachine/29B2EE76-B698-4EA0-92DB-46CCF4327D89/2026-04-02-152252.backup/2026-04-02-152252.backup"
+            ]
+        )
+
+        XCTAssertEqual(
+            paths,
+            [
+                root.appendingPathComponent("2025-12-14-213031").path,
+                root.appendingPathComponent("2026-04-02-152252").path
+            ]
+        )
     }
 
     func testCommandPresentationHandlesEmptySuccessOutput() {

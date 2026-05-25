@@ -1,49 +1,65 @@
 import AppKit
+import Foundation
 import Observation
 import SwiftUI
+import UserNotifications
 
 @main
+enum TimeMachinePlusPlusMain {
+    static func main() {
+        if TimeMachinePlusPlusApp.isBackgroundScan {
+            runBackgroundScan()
+        } else {
+            TimeMachinePlusPlusApp.main()
+        }
+    }
+
+    private static func runBackgroundScan() {
+        var isFinished = false
+
+        Task { @MainActor in
+            let store = AppStateStore()
+            store.load()
+            _ = store.beginBlockingOperation(title: "Background Scan")
+            await store.scanNow()
+            let scannedItemCount = store.matches.count
+            let addedExclusionCount = await store.applySelectedMatches(refreshAfterApply: false)
+            store.recordHelperScan(
+                scannedItemCount: scannedItemCount,
+                addedExclusionCount: addedExclusionCount
+            )
+            HelperNotifications.postScanDidFinish()
+            store.finishBlockingOperation(status: store.statusMessage)
+            isFinished = true
+        }
+
+        while !isFinished {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
+        }
+    }
+}
+
 struct TimeMachinePlusPlusApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @Environment(\.openWindow) private var openWindow
     @State private var store: AppStateStore
 
     init() {
         let store = AppStateStore()
         _store = State(initialValue: store)
-
-        if Self.isBackgroundScan {
-            Task { @MainActor in
-                store.load()
-                _ = store.beginBlockingOperation(title: "Background Scan")
-                await store.scanNow()
-                let scannedItemCount = store.matches.count
-                let addedExclusionCount = await store.applySelectedMatches()
-                store.recordHelperScan(
-                    scannedItemCount: scannedItemCount,
-                    addedExclusionCount: addedExclusionCount
-                )
-                store.finishBlockingOperation(status: store.statusMessage)
-                NSApp.terminate(nil)
-            }
-        }
     }
 
     var body: some Scene {
         WindowGroup("TimeMachine++", id: "main") {
-            if Self.isBackgroundScan {
-                BackgroundScanPlaceholder()
-            } else {
-                ContentView()
-                    .frame(minWidth: 980, minHeight: 640)
-                    .environment(store)
-                    .task {
-                        store.load()
-                        if !Self.isRunningUnitTests {
-                            await store.refreshTimeMachineState()
-                        }
+            ContentView()
+                .frame(minWidth: 980, minHeight: 640)
+                .environment(store)
+                .task {
+                    store.load()
+                    if !Self.isRunningUnitTests {
+                        await store.refreshTimeMachineState()
+                        store.checkForUpdatesAutomaticallyIfNeeded()
                     }
-            }
+                }
         }
         .commands {
             CommandGroup(after: .newItem) {
@@ -54,13 +70,9 @@ struct TimeMachinePlusPlusApp: App {
             }
         }
 
-        MenuBarExtra("TimeMachine++", systemImage: "clock.arrow.circlepath") {
-            if Self.isBackgroundScan {
-                EmptyView()
-            } else {
-                MenuBarContentView()
-                    .environment(store)
-            }
+        MenuBarExtra("TimeMachine++", systemImage: store.updateMenuBarSystemImage) {
+            MenuBarContentView()
+                .environment(store)
         }
     }
 
@@ -73,29 +85,26 @@ struct TimeMachinePlusPlusApp: App {
     }
 }
 
-private struct BackgroundScanPlaceholder: View {
-    var body: some View {
-        Color.clear
-            .frame(width: 1, height: 1)
-            .task {
-                NSApp.hide(nil)
-                NSApp.windows.forEach { $0.close() }
-            }
-    }
-}
-
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         if TimeMachinePlusPlusApp.isBackgroundScan {
             NSApp.setActivationPolicy(.accessory)
             return
         }
 
+        UNUserNotificationCenter.current().delegate = self
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         ProcessRegistry.shared.terminateAll()
+    }
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification
+    ) async -> UNNotificationPresentationOptions {
+        [.banner, .sound]
     }
 }

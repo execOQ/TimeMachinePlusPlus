@@ -24,6 +24,17 @@ struct StatusBarView: View {
                     .foregroundStyle(.tertiary)
             }
 
+            if let helperScanSummary = store.helperScanSummary {
+                Text("· \(helperScanSummary)")
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            } else {
+                Text("· Helper scan: no runs yet")
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
+
             Spacer()
 
             if store.isWorking, store.canCancelCurrentOperation {
@@ -38,11 +49,6 @@ struct StatusBarView: View {
                     .foregroundStyle(.tertiary)
             }
 
-            if let helperScanSummary = store.helperScanSummary {
-                Text("· \(helperScanSummary)")
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-            }
         }
         .font(.caption)
         .padding(.horizontal, 16)

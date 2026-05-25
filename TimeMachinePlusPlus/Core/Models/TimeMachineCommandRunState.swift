@@ -21,6 +21,9 @@ struct TimeMachineCommandPresentation: Equatable {
 struct TimeMachineCommandActivity: Equatable {
     var title: String
     var context: TimeMachineCommandContext
+    var detail: String?
+    var canCancel: Bool = false
+    var representedPath: String?
 }
 
 enum TimeMachineCommandContext: Hashable {
@@ -28,12 +31,11 @@ enum TimeMachineCommandContext: Hashable {
     case addDestination
     case destinationActions(String)
     case destinationSnapshots(String)
-    case destinationRestoreCompare(String)
     case snapshots
     case exclusions
     case diagnostics
     case pathDiagnostics
-    case restoreCompare
+    case compare
     case deleteBackups
     case adoption
     case machineDirectory
@@ -64,8 +66,6 @@ enum TimeMachineCommandPresentationFormatter {
         switch command {
         case "compare":
             summary = compareSummary(argumentCount: max(arguments.count - 1, 0), output: rawText)
-        case "restore":
-            summary = "Restore finished."
         case "startbackup":
             summary = "Backup request was sent to Time Machine."
         case "stopbackup":
@@ -82,6 +82,10 @@ enum TimeMachineCommandPresentationFormatter {
             summary = "Local snapshot was deleted."
         case "thinlocalsnapshots":
             summary = firstUsefulLine(in: rawText) ?? "Local snapshots were thinned."
+        case "latestbackup":
+            return latestBackupPresentation(title: title, rawText: rawText, result: result)
+        case "listbackups":
+            return listBackupsPresentation(title: title, rawText: rawText, result: result)
         case "delete":
             summary = "Backup snapshot deletion finished."
         case "deleteinprogress":
@@ -132,6 +136,76 @@ enum TimeMachineCommandPresentationFormatter {
         text.components(separatedBy: .newlines)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .first { !$0.isEmpty }
+    }
+
+    private static func latestBackupPresentation(
+        title: String,
+        rawText: String,
+        result: CommandResult
+    ) -> TimeMachineCommandPresentation {
+        let latestPath = firstUsefulLine(in: rawText)
+        let detail = rawText.isEmpty ? "Exit 0. No output." : rawText
+
+        guard let latestPath else {
+            return TimeMachineCommandPresentation(
+                title: title,
+                summary: "No latest backup path was returned.",
+                detail: detail,
+                tone: .warning,
+                exitCode: result.exitCode
+            )
+        }
+
+        let exists = FileManager.default.fileExists(atPath: latestPath)
+        return TimeMachineCommandPresentation(
+            title: title,
+            summary: exists ? "Latest mounted backup." : "Latest backup history record is not mounted.",
+            detail: exists ? latestPath : "\(latestPath)\n\nThis path was returned by tmutil, but it does not currently exist on disk. Attach or remount the backup image before browsing, comparing, or measuring this snapshot.",
+            tone: exists ? .success : .warning,
+            exitCode: result.exitCode
+        )
+    }
+
+    private static func listBackupsPresentation(
+        title: String,
+        rawText: String,
+        result: CommandResult
+    ) -> TimeMachineCommandPresentation {
+        let paths = rawText
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        let mountedCount = paths.filter { FileManager.default.fileExists(atPath: $0) }.count
+        let historyOnlyCount = paths.count - mountedCount
+        let detail = rawText.isEmpty ? "Exit 0. No output." : rawText
+
+        if paths.isEmpty {
+            return TimeMachineCommandPresentation(
+                title: title,
+                summary: "No backup records were returned.",
+                detail: detail,
+                tone: .warning,
+                exitCode: result.exitCode
+            )
+        }
+
+        if historyOnlyCount > 0 {
+            return TimeMachineCommandPresentation(
+                title: title,
+                summary: "Listed \(paths.count) backup history record\(paths.count == 1 ? "" : "s"); \(historyOnlyCount) not mounted.",
+                detail: "\(detail)\n\nPaths marked as not mounted were returned by tmutil, but they do not currently exist on disk.",
+                tone: .warning,
+                exitCode: result.exitCode
+            )
+        }
+
+        return TimeMachineCommandPresentation(
+            title: title,
+            summary: "Listed \(mountedCount) mounted backup\(mountedCount == 1 ? "" : "s").",
+            detail: detail,
+            tone: .success,
+            exitCode: result.exitCode
+        )
     }
 
     private static func compareSummary(argumentCount: Int, output: String) -> String {

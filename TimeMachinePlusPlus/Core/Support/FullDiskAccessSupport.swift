@@ -71,3 +71,12 @@ enum FullDiskAccessSupport {
         return path.replacingOccurrences(of: "~", with: homeURL.path)
     }
 }
+
+enum BackgroundItemsSupport {
+    static func openSystemSettings() {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension") else {
+            return
+        }
+        NSWorkspace.shared.open(url)
+    }
+}

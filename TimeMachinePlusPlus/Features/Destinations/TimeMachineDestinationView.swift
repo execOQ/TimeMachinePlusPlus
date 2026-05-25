@@ -37,16 +37,6 @@ struct TimeMachineDestinationView: TimeMachineCommandSurface {
         nonmutating set { destinationState.selectedSnapshots = newValue }
     }
 
-    var restoreSources: String {
-        get { destinationState.restoreSources }
-        nonmutating set { destinationState.restoreSources = newValue }
-    }
-
-    var restoreDestination: String {
-        get { destinationState.restoreDestination }
-        nonmutating set { destinationState.restoreDestination = newValue }
-    }
-
     var comparePaths: String {
         get { pathState.comparePaths }
         nonmutating set { pathState.comparePaths = newValue }
@@ -105,6 +95,11 @@ struct TimeMachineDestinationView: TimeMachineCommandSurface {
     var pendingDestructiveAction: DestructiveAction? {
         get { commandState.pendingDestructiveAction }
         nonmutating set { commandState.pendingDestructiveAction = newValue }
+    }
+
+    var pendingBackupImageAttachRequest: BackupImageAttachRequest? {
+        get { commandState.pendingBackupImageAttachRequest }
+        nonmutating set { commandState.pendingBackupImageAttachRequest = newValue }
     }
 
     var sizeTask: Task<Void, Never>? {
@@ -168,6 +163,19 @@ struct TimeMachineDestinationView: TimeMachineCommandSurface {
                 .foregroundStyle(.primary)
         } message: {
             Text(pendingDestructiveAction?.message ?? "")
+        }
+        .alert(
+            "Attaching a NAS Backup Image Can Be Slow",
+            isPresented: backupImageAttachWarningPresented
+        ) {
+            Button(pendingBackupImageAttachRequest?.buttonTitle ?? "Attach") {
+                runPendingBackupImageAttachRequest()
+            }
+            Button("Cancel", role: .cancel) {
+                pendingBackupImageAttachRequest = nil
+            }
+        } message: {
+            Text("Time Machine sparsebundles on a NAS can take from several minutes to several hours to attach, depending on the size of the image.")
         }
     }
 }

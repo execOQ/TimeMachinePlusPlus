@@ -9,10 +9,14 @@ struct PersistedState: Codable {
     var lastHelperScanDate: Date?
     var lastHelperScannedItemCount: Int
     var lastHelperAddedExclusionCount: Int
+    var lastUpdateCheckDate: Date?
+    var lastNotifiedUpdateVersion: String?
 
     private enum CodingKeys: String, CodingKey {
         case rules, manualExclusions, appliedExclusions, settings, snapshotSizeCache
         case lastHelperScanDate, lastHelperScannedItemCount, lastHelperAddedExclusionCount
+        case lastUpdateCheckDate
+        case lastNotifiedUpdateVersion
     }
 
     init(
@@ -23,7 +27,9 @@ struct PersistedState: Codable {
         snapshotSizeCache: [String: Int64] = [:],
         lastHelperScanDate: Date? = nil,
         lastHelperScannedItemCount: Int = 0,
-        lastHelperAddedExclusionCount: Int = 0
+        lastHelperAddedExclusionCount: Int = 0,
+        lastUpdateCheckDate: Date? = nil,
+        lastNotifiedUpdateVersion: String? = nil
     ) {
         self.rules = rules
         self.manualExclusions = manualExclusions
@@ -33,6 +39,8 @@ struct PersistedState: Codable {
         self.lastHelperScanDate = lastHelperScanDate
         self.lastHelperScannedItemCount = lastHelperScannedItemCount
         self.lastHelperAddedExclusionCount = lastHelperAddedExclusionCount
+        self.lastUpdateCheckDate = lastUpdateCheckDate
+        self.lastNotifiedUpdateVersion = lastNotifiedUpdateVersion
     }
 
     init(from decoder: Decoder) throws {
@@ -45,6 +53,8 @@ struct PersistedState: Codable {
         lastHelperScanDate = try c.decodeIfPresent(Date.self, forKey: .lastHelperScanDate)
         lastHelperScannedItemCount = try c.decodeIfPresent(Int.self, forKey: .lastHelperScannedItemCount) ?? 0
         lastHelperAddedExclusionCount = try c.decodeIfPresent(Int.self, forKey: .lastHelperAddedExclusionCount) ?? 0
+        lastUpdateCheckDate = try c.decodeIfPresent(Date.self, forKey: .lastUpdateCheckDate)
+        lastNotifiedUpdateVersion = try c.decodeIfPresent(String.self, forKey: .lastNotifiedUpdateVersion)
     }
 
     static var defaults: PersistedState {

@@ -91,6 +91,52 @@ enum TimeMachineStateParser {
         .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
     }
 
+    static func mountedBackupSnapshotCandidates(destinationMountPoint: String, backupPaths: [String]) -> [String] {
+        backupPaths
+            .flatMap { mountedCandidatePaths(destinationMountPoint: destinationMountPoint, backupPath: $0) }
+            .reduce(into: [String]()) { result, candidate in
+                if !result.contains(candidate) {
+                    result.append(candidate)
+                }
+            }
+            .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+    }
+
+    static func mountedBackupSnapshotPaths(destinationMountPoint: String, backupPaths: [String]) -> [String] {
+        backupPaths
+            .map { backupPath in
+                mountedCandidatePaths(destinationMountPoint: destinationMountPoint, backupPath: backupPath)
+                    .first { FileManager.default.fileExists(atPath: $0) }
+                    ?? backupPath
+            }
+            .reduce(into: [String]()) { result, candidate in
+                if !result.contains(candidate) {
+                    result.append(candidate)
+                }
+            }
+            .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+    }
+
+    private static func mountedCandidatePaths(destinationMountPoint: String, backupPath: String) -> [String] {
+        let backupURL = URL(fileURLWithPath: backupPath)
+        let snapshotName = backupURL.lastPathComponent
+        guard snapshotName.lowercased().hasSuffix(".backup") else { return [] }
+
+        let mountURL = URL(fileURLWithPath: destinationMountPoint)
+        let visibleSnapshotName = String(snapshotName.dropLast(".backup".count))
+        let candidates = [
+            mountURL.appendingPathComponent(visibleSnapshotName).path,
+            mountURL.appendingPathComponent(snapshotName).path,
+            backupURL.deletingLastPathComponent().path
+        ]
+
+        return candidates.reduce(into: [String]()) { result, candidate in
+            if !result.contains(candidate) {
+                result.append(candidate)
+            }
+        }
+    }
+
     static func sparsebundleSnapshots(sparsebundlePath: String) -> [String] {
         let historyURL = URL(fileURLWithPath: sparsebundlePath)
             .appendingPathComponent("com.apple.TimeMachine.SnapshotHistory.plist")

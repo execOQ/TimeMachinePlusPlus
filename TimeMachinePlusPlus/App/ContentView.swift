@@ -1,10 +1,35 @@
+import Foundation
+import AppKit
 import SwiftUI
 
 struct ContentView: View {
+    @Environment(AppStateStore.self) private var store
+    @State private var helperObserver: NSObjectProtocol?
+
     var body: some View {
         ZStack {
             AppNavigationView()
             BlockingOperationOverlayHost()
+        }
+        .onAppear {
+            store.refreshHelperStatus()
+            guard helperObserver == nil else { return }
+            helperObserver = DistributedNotificationCenter.default().addObserver(
+                forName: HelperNotifications.scanDidFinish,
+                object: nil,
+                queue: .main
+            ) { _ in
+                store.refreshHelperStatus()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            store.refreshHelperStatus()
+        }
+        .onDisappear {
+            if let helperObserver {
+                DistributedNotificationCenter.default().removeObserver(helperObserver)
+                self.helperObserver = nil
+            }
         }
     }
 }

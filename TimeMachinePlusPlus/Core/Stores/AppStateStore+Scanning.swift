@@ -77,7 +77,7 @@ extension AppStateStore {
     }
 
     @discardableResult
-    func applySelectedMatches() async -> Int {
+    func applySelectedMatches(refreshAfterApply: Bool = true) async -> Int {
         let targets = matches.filter { $0.isSelected && !$0.isExcluded }
         guard !targets.isEmpty else {
             statusMessage = "Nothing new to exclude"
@@ -128,7 +128,7 @@ extension AppStateStore {
             : "Applied \(applied), failed \(failures.count)."
         if isCombinedStartOperation {
             updateOperation(detail: "Applied \(applied) exclusions", progress: 0.88)
-        } else {
+        } else if refreshAfterApply {
             await scanNow()
         }
         return applied

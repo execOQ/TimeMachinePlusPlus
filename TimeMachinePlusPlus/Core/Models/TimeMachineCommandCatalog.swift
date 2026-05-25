@@ -266,23 +266,9 @@ extension TimeMachineCommandDefinition {
             usage: "tmutil machinedirectory"
         ),
         TimeMachineCommandDefinition(
-            id: "restore",
-            title: "Restore",
-            category: .restoreCompare,
-            summary: "Restore one or more snapshot items to a destination.",
-            usage: "tmutil restore [-v] src ... dst",
-            options: [
-                TimeMachineCommandOption(id: "verbose", label: "Verbose", help: "Print more restore details.", arguments: ["-v"])
-            ],
-            arguments: [
-                TimeMachineCommandArgument(id: "sources", label: "Source Paths", help: "Snapshot source paths, one per line.", placeholder: "/Volumes/Backup/.../file.txt", kind: .paths),
-                TimeMachineCommandArgument(id: "destination", label: "Destination", help: "Restore destination path.", placeholder: "/Users/me/Desktop/Restored", kind: .path)
-            ]
-        ),
-        TimeMachineCommandDefinition(
             id: "compare",
             title: "Compare",
-            category: .restoreCompare,
+            category: .compare,
             summary: "Compare the Mac with a backup, or compare two paths.",
             usage: "tmutil compare [-@acdefghlmnstuEX] [-D depth] [-I name] [snapshot_path | path1 path2]",
             options: [

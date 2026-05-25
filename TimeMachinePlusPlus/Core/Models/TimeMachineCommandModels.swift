@@ -5,7 +5,7 @@ enum TimeMachineCommandCategory: String, CaseIterable, Identifiable {
     case destinations = "Destinations"
     case exclusions = "Exclusions"
     case snapshots = "Snapshots"
-    case restoreCompare = "Restore & Compare"
+    case compare = "Compare"
     case adoption = "Adoption"
     case diagnostics = "Diagnostics"
 

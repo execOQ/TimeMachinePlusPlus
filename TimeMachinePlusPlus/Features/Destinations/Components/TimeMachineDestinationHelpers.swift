@@ -2,72 +2,99 @@ import AppKit
 import SwiftUI
 
 extension TimeMachineCommandSurface {
-    func destinationRestoreCompareBox(destination: TimeMachineDestination) -> some View {
-        AppSectionView(title: "Compare & Restore") {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Select one snapshot above, or enter exact snapshot item paths below.")
-                    .font(.caption)
+    func destinationSummaryBox(_ destination: TimeMachineDestination) -> some View {
+        AppSectionView(title: "Destination") {
+            VStack(alignment: .leading, spacing: 12) {
+                Label(destination.detail, systemImage: destination.mountPoint == nil ? "network" : "externaldrive")
+                    .font(.system(.caption, design: .monospaced))
                     .foregroundStyle(.secondary)
 
-                HStack(spacing: 10) {
-                    Button {
-                        run(arguments: ["compare"] + Array(selectedSnapshots), context: .destinationRestoreCompare(destination.id), title: "Compare Selected", status: "Comparing selected snapshots...")
-                    } label: {
-                        primaryButtonLabel("Compare Selected", systemImage: "arrow.left.arrow.right")
-                    }
-                    .disabled(selectedSnapshots.isEmpty || !canBrowseSelectedSnapshots)
-                    .help(canBrowseSelectedSnapshots ? "Compare selected snapshots" : "These entries came from sparsebundle history and are not mounted snapshot paths yet.")
+                if destination.isNetworkShareMissing {
+                    HStack(spacing: 10) {
+                        Label("Network share is not connected.", systemImage: "network.badge.shield.half.filled")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
 
-                    Button {
-                        restoreSources = Array(selectedSnapshots).joined(separator: "\n")
-                    } label: {
-                        primaryButtonLabel("Use Selected for Restore", systemImage: "arrow.down.doc")
+                        Spacer()
+
+                        Button {
+                            store.mountNetworkShare(for: destination)
+                        } label: {
+                            primaryButtonLabel("Mount Share", systemImage: "externaldrive.connected.to.line.below")
+                        }
+                        .disabled(store.isWorking)
                     }
-                    .disabled(selectedSnapshots.isEmpty)
                 }
 
-                pathEditor("Restore sources", text: restoreSourcesBinding)
-                TextField("Restore destination", text: restoreDestinationBinding)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(.body, design: .monospaced))
+                if let sparsebundlePath = destination.sparsebundlePath {
+                    HStack {
+                        storageCell("Backup image", value: Formatters.fileSize(store.snapshotSizeCache[sparsebundlePath]))
+                        Spacer()
+                    }
 
-                Button {
-                    run(arguments: ["restore", "-v"] + parsedLines(restoreSources) + [restoreDestination], context: .destinationRestoreCompare(destination.id), title: "Restore", status: "Restoring files...")
-                } label: {
-                    primaryButtonLabel("Restore", systemImage: "arrow.down.doc")
+                    if destination.mountPoint == nil {
+                        HStack(spacing: 10) {
+                            Label("Network share is mounted, but the backup image is not attached as a browsable snapshot volume.", systemImage: "externaldrive.badge.xmark")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+
+                            Spacer()
+
+                            Button {
+                                requestBackupImageAttach(destination)
+                            } label: {
+                                primaryButtonLabel("Attach Image", systemImage: "externaldrive.connected.to.line.below")
+                            }
+                            .disabled(store.isWorking)
+                        }
+                    }
                 }
-                .disabled(parsedLines(restoreSources).isEmpty || restoreDestination.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
-                commandFeedback(for: .destinationRestoreCompare(destination.id))
+                if let storagePath = storageStatsPath(for: destination) {
+                    storageContent(path: storagePath)
+                } else {
+                    Label("Storage statistics are available when the destination is mounted.", systemImage: "externaldrive.badge.xmark")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
     }
 
     func storageBox(mountPoint: String) -> some View {
         AppSectionView(title: "Storage") {
-            if let stats = volumeStats[mountPoint] {
-                let used = max(0, stats.total - stats.free)
-                let usedFraction = stats.total > 0 ? Double(used) / Double(stats.total) : 0
-                VStack(alignment: .leading, spacing: 10) {
-                    ProgressView(value: usedFraction)
-                        .progressViewStyle(.linear)
-                        .tint(usedFraction > 0.9 ? .red : usedFraction > 0.75 ? .orange : .accentColor)
-
-                    Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 4) {
-                        GridRow {
-                            storageCell("Used", value: Formatters.fileSize(used))
-                            storageCell("Available", value: Formatters.fileSize(stats.free))
-                            storageCell("Total", value: Formatters.fileSize(stats.total))
-                        }
-                    }
-                    .font(.caption)
-                }
-            } else {
-                ProgressView().controlSize(.small)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
+            storageContent(path: mountPoint)
         }
         .padding(.vertical, 2)
+    }
+
+    var compareSelectedTitle: String {
+        selectedSnapshots.count == 1 ? "Compare with Current Mac State" : "Compare Selected"
+    }
+
+    @ViewBuilder
+    func storageContent(path: String) -> some View {
+        if let stats = volumeStats[path] {
+            let used = max(0, stats.total - stats.free)
+            let usedFraction = stats.total > 0 ? Double(used) / Double(stats.total) : 0
+            VStack(alignment: .leading, spacing: 10) {
+                ProgressView(value: usedFraction)
+                    .progressViewStyle(.linear)
+                    .tint(usedFraction > 0.9 ? .red : usedFraction > 0.75 ? .orange : .accentColor)
+
+                Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 4) {
+                    GridRow {
+                        storageCell("Taken", value: Formatters.fileSize(used))
+                        storageCell("Free", value: Formatters.fileSize(stats.free))
+                        storageCell("Total", value: Formatters.fileSize(stats.total))
+                    }
+                }
+                .font(.caption)
+            }
+        } else {
+            ProgressView().controlSize(.small)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 
     func storageCell(_ label: String, value: String) -> some View {
@@ -77,5 +104,17 @@ extension TimeMachineCommandSurface {
         }
     }
 
+    func storageStatsPath(for destination: TimeMachineDestination) -> String? {
+        if let mountPoint = destination.mountPoint, FileManager.default.fileExists(atPath: mountPoint) {
+            return mountPoint
+        }
+        if let shareMountPoint = destination.shareMountPoint, FileManager.default.fileExists(atPath: shareMountPoint) {
+            return shareMountPoint
+        }
+        if let sparsebundlePath = destination.sparsebundlePath, FileManager.default.fileExists(atPath: sparsebundlePath) {
+            return sparsebundlePath
+        }
+        return nil
+    }
 
 }
