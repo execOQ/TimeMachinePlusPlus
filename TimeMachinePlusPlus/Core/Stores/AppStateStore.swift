@@ -13,8 +13,8 @@ final class AppStateStore {
     var settings: AppSettings = .defaults
     var snapshotSizeCache: [String: Int64] = [:]
     var matches: [ScanMatch] = []
-    var selectedSelection: AppSidebarSelection = .section(.exclusionRules)
     var statusMessage = "Ready"
+    var rulesStatusMessage = "Ready"
     var lastScanDate: Date?
     var lastHelperScanDate: Date?
     var lastHelperScannedItemCount = 0
@@ -62,7 +62,7 @@ final class AppStateStore {
     @ObservationIgnored
     var activeTask: Task<Void, Never>?
     @ObservationIgnored
-    var updateCheckTask: Task<Void, Never>?
+    var updateReleaseNotesTask: Task<Void, Never>?
     @ObservationIgnored
     var updateCancellables = Set<AnyCancellable>()
     @ObservationIgnored
@@ -78,12 +78,10 @@ final class AppStateStore {
 
     var canEdit: Bool { !isWorking }
     var startActionTitle: String {
-        settings.startButtonStartsBackup ? "Scan + Start Backup" : "Scan + Apply Exclusions"
+        "Scan + Apply Exclusions"
     }
     var startActionHelp: String {
-        settings.startButtonStartsBackup
-            ? "Scan, apply exclusions, then start Time Machine backup"
-            : "Scan and apply exclusions without starting a backup"
+        "Scan and apply exclusions without starting a backup"
     }
     var isCombinedStartOperation: Bool {
         operationTitle == "Scan + Backup" || operationTitle == "Scan + Apply"

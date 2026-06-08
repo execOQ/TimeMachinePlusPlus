@@ -42,6 +42,7 @@ enum TimeMachinePlusPlusMain {
 struct TimeMachinePlusPlusApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var store: AppStateStore
+    @State private var isShowingSettings = false
 
     init() {
         let store = AppStateStore()
@@ -50,19 +51,25 @@ struct TimeMachinePlusPlusApp: App {
 
     var body: some Scene {
         WindowGroup("TimeMachine++", id: "main") {
-            ContentView()
-                .frame(minWidth: 980, minHeight: 640)
+            ContentView(isShowingSettings: $isShowingSettings)
+                .frame(minWidth: 630, minHeight: 450)
                 .environment(store)
                 .task {
                     store.load()
                     if !Self.isRunningUnitTests {
-                        await store.refreshTimeMachineState()
                         store.checkForUpdatesAutomaticallyIfNeeded()
                     }
                 }
         }
         .commands {
-            CommandGroup(after: .newItem) {
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings...") {
+                    isShowingSettings = true
+                }
+                .keyboardShortcut(",", modifiers: .command)
+            }
+
+            CommandGroup(replacing: .newItem) {
                 Button(store.startActionTitle) {
                     store.startConfiguredStartAction()
                 }

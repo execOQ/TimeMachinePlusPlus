@@ -5,40 +5,86 @@ struct RulesView: View {
     @Environment(AppStateStore.self) private var store
     var showsHeader: Bool = true
     @State private var autosaveTask: Task<Void, Never>?
+    @State private var isTemplateSheetPresented = false
+    @State private var isShowingAppManagedExclusions = false
 
     var body: some View {
         @Bindable var store = store
 
         PageView(title: "Rules", subtitle: "Exclude by pattern or add specific files and folders") {
-            List {
-                ForEach($store.rules) { $rule in
-                    RuleRow(rule: $rule) {
-                        store.deleteRule(rule)
+            VStack(alignment: .leading, spacing: 12) {
+                List {
+                    ForEach($store.rules) { $rule in
+                        RuleRow(rule: $rule) {
+                            store.deleteRule(rule)
+                        }
                     }
                 }
+                .listStyle(.inset)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .disabled(!store.canEdit)
             }
-            .listStyle(.inset)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .toolbar {
-            Menu {
+            ToolbarItemGroup {
                 Button {
-                    store.addRule()
+                    isShowingAppManagedExclusions = true
                 } label: {
-                    Label("Add Rule", systemImage: "plus")
+                    Label("App-Managed", systemImage: "document.badge.clock.fill")
                 }
-                Button {
-                    pickSpecificPaths()
+                .help("Show exclusions already applied by TimeMachine++.")
+
+                Menu {
+                    Button {
+                        store.addRule()
+                    } label: {
+                        Label("Add Rule", systemImage: "plus")
+                    }
+
+                    Button {
+                        isTemplateSheetPresented = true
+                    } label: {
+                        Label("Add from Templates", systemImage: "square.grid.2x2")
+                    }
+
+                    Button {
+                        pickSpecificPaths()
+                    } label: {
+                        Label("Add Specific", systemImage: "folder.badge.plus")
+                    }
                 } label: {
-                    Label("Add Specific", systemImage: "folder.badge.plus")
+                    Label("Add", systemImage: "plus")
                 }
-            } label: {
-                Label("Add", systemImage: "plus")
+                .help("Add a new exclusion rule, or add specific files and folders to exclude.")
+                .disabled(!store.canEdit)
             }
-            .help("Add a new exclusion rule, or add specific files and folders to exclude.")
-            .disabled(!store.canEdit)
+
+            ToolbarItemGroup {
+                if store.isWorking, store.canCancelCurrentOperation {
+                    Button("Cancel") {
+                        store.cancelOperation()
+                    }
+                    .help("Cancel the current exclusion operation.")
+                } else {
+                    Button {
+                        store.startConfiguredStartAction()
+                    } label: {
+                        Label(store.startActionTitle, systemImage: "play")
+                    }
+                    .help(store.startActionHelp)
+                    .disabled(!store.canEdit)
+                }
+            }
         }
-        .disabled(!store.canEdit)
+        .sheet(isPresented: $isTemplateSheetPresented) {
+            RuleTemplatesSheet()
+                .environment(store)
+        }
+        .sheet(isPresented: $isShowingAppManagedExclusions) {
+            AppManagedExclusionsView()
+                .environment(store)
+                .frame(minWidth: 720, minHeight: 520)
+        }
         .onChange(of: store.rules) { scheduleAutosave() }
         .onDisappear {
             autosaveTask?.cancel()
@@ -64,6 +110,163 @@ struct RulesView: View {
             await Task.yield()
             guard !Task.isCancelled else { return }
             store.save()
+        }
+    }
+}
+
+private struct RuleTemplatesSheet: View {
+    @Environment(AppStateStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+
+    private var categories: [String] {
+        var seen: Set<String> = []
+        return RuleTemplate.common.compactMap { template in
+            guard !seen.contains(template.category) else { return nil }
+            seen.insert(template.category)
+            return template.category
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            header
+
+            Divider()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    ForEach(categories, id: \.self) { category in
+                        templateSection(category)
+                    }
+                }
+                .padding()
+            }
+
+            Divider()
+
+            footer
+        }
+        .frame(minWidth: 560, idealWidth: 640, minHeight: 520, idealHeight: 620)
+    }
+
+    private var header: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Rule Templates")
+                    .font(.title2.weight(.semibold))
+                Text("Add common development artifacts to your exclusion rules.")
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Button("Close") {
+                dismiss()
+            }
+            .buttonStyle(.borderless)
+            .help("Close")
+        }
+        .padding()
+    }
+
+    private var footer: some View {
+        HStack {
+            Text("\(missingTemplateCount) templates available")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Spacer()
+
+            Button("Done") {
+                dismiss()
+            }
+
+            Button {
+                store.addMissingRules(from: RuleTemplate.common)
+            } label: {
+                Label("Add All Missing", systemImage: "plus.circle")
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(missingTemplateCount == 0)
+        }
+        .padding()
+    }
+
+    private var missingTemplateCount: Int {
+        RuleTemplate.common.filter { !store.hasRule(from: $0) }.count
+    }
+
+    private func templateSection(_ category: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            AppSectionLabel(title: category, topPadding: 0)
+
+            VStack(spacing: 0) {
+                let templates = RuleTemplate.common.filter { $0.category == category }
+                ForEach(templates) { template in
+                    RuleTemplateRow(template: template)
+
+                    if template.id != templates.last?.id {
+                        Divider()
+                            .padding(.leading, 36)
+                    }
+                }
+            }
+            .boxContainer(padding: 0)
+        }
+    }
+}
+
+private struct RuleTemplateRow: View {
+    @Environment(AppStateStore.self) private var store
+    var template: RuleTemplate
+
+    private var isAdded: Bool {
+        store.hasRule(from: template)
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: iconName)
+                .foregroundStyle(.secondary)
+                .frame(width: 20)
+                .padding(.top, 3)
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(template.name)
+                    .font(.headline)
+
+                Text(template.description)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Text(template.pattern.replacingOccurrences(of: "\n", with: ", "))
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(2)
+            }
+
+            Spacer(minLength: 12)
+
+            Button {
+                store.addRule(from: template)
+            } label: {
+                Label(isAdded ? "Added" : "Add", systemImage: isAdded ? "checkmark" : "plus")
+            }
+            .disabled(isAdded)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+    }
+
+    private var iconName: String {
+        switch template.category {
+        case "Node": return "hexagon"
+        case "Python": return "chevron.left.forwardslash.chevron.right"
+        case "Ruby": return "diamond"
+        case "Xcode", "Swift": return "hammer"
+        case "Java": return "cup.and.saucer"
+        case "Rust", "Go": return "shippingbox"
+        default: return "folder.badge.gearshape"
         }
     }
 }

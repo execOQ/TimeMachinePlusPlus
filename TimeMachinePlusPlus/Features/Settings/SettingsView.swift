@@ -1,4 +1,5 @@
 import AppKit
+import MarkdownUI
 import SwiftUI
 
 private struct ScanRootRowItem: Identifiable {
@@ -8,7 +9,11 @@ private struct ScanRootRowItem: Identifiable {
 
 struct SettingsView: View {
     @Environment(AppStateStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
     @State private var autosaveTask: Task<Void, Never>?
+    @State private var permissionsStatusMessage: String?
+    @State private var appStatusMessage: String?
+    @State private var helperActionMessage: String?
 
     var body: some View {
         @Bindable var store = store
@@ -54,6 +59,7 @@ struct SettingsView: View {
 
                             Button {
                                 store.refreshFullDiskAccessStatus()
+                                permissionsStatusMessage = "Full Disk Access status refreshed"
                             } label: {
                                 Image(systemName: "arrow.clockwise")
                             }
@@ -66,17 +72,30 @@ struct SettingsView: View {
                                 AppActionLabel(title: "Open Settings", systemImage: "gear")
                             }
                         }
-                    }
 
-                    AppSectionView(title: "Interface", description: "When this is off, the toolbar Start button only scans and applies exclusions. Backups can still be started manually from Time Machine controls.") {
-                        Toggle("Start backup after scanning and applying exclusions", isOn: $store.settings.startButtonStartsBackup)
+                        if let permissionsStatusMessage {
+                            Label(permissionsStatusMessage, systemImage: "info.circle")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
 
                     AppSectionView(title: "App", description: "Launch at login is managed through macOS Login Items.") {
                         Toggle("Open TimeMachine++ when logging in", isOn: Binding(
                             get: { store.isLoginItemEnabled },
-                            set: { store.setLaunchAtLogin($0) }
+                            set: { isEnabled in
+                                store.setLaunchAtLogin(isEnabled)
+                                appStatusMessage = isEnabled
+                                    ? "TimeMachine++ will open at login"
+                                    : "TimeMachine++ will not open at login"
+                            }
                         ))
+
+                        if let appStatusMessage {
+                            Label(appStatusMessage, systemImage: "info.circle")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
 
                     AppSectionView(title: "Updates", description: "Updates are downloaded from GitHub releases. Installation starts only after you confirm it here.") {
@@ -93,7 +112,7 @@ struct SettingsView: View {
                                     ProgressView()
                                         .controlSize(.small)
                                 } else {
-                                    Image(systemName: "arrow.down.circle")
+                                    Image(systemName: "arrow.clockwise")
                                 }
                             }
                             .buttonStyle(.borderless)
@@ -119,6 +138,15 @@ struct SettingsView: View {
                             }
                         }
 
+                        if store.updateStatus == .available {
+                            Button {
+                                store.downloadAvailableUpdate()
+                            } label: {
+                                Label("Download Update", systemImage: "arrow.down.circle")
+                                    .foregroundStyle(.primary)
+                            }
+                        }
+
                         if store.updateStatus == .readyToInstall {
                             Button {
                                 store.installDownloadedUpdate()
@@ -128,10 +156,10 @@ struct SettingsView: View {
                             }
                         }
 
-                        if let updateLastError = store.updateLastError, store.updateStatus == .failed {
-                            Text(updateLastError)
+                        if let updateLastError = store.updateLastError, shouldShowUpdateError {
+                            Label(updateLastError, systemImage: "exclamationmark.triangle.fill")
                                 .font(.caption)
-                                .foregroundStyle(.red)
+                                .foregroundStyle(updateStatusColor)
                                 .textSelection(.enabled)
                         }
 
@@ -145,7 +173,7 @@ struct SettingsView: View {
                         if !store.updateReleaseNotes.isEmpty {
                             AppSectionLabel(title: "Release Notes", topPadding: 2)
                             ScrollView {
-                                Text(store.updateReleaseNotes)
+                                Markdown(store.updateReleaseNotes)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .textSelection(.enabled)
                             }
@@ -153,7 +181,7 @@ struct SettingsView: View {
                         }
                     }
 
-                    AppSectionView(title: "Helper", description: "macOS does not provide a public pre-backup hook. The helper runs a low-frequency readiness pass; Scan + Start Backup gives exact ordering for backups started here.") {
+                    AppSectionView(title: "Helper", description: "The helper runs a low-frequency readiness pass so exclusions stay current in the background.") {
                         HStack(spacing: 10) {
                             Label(
                                 helperStatusLabel,
@@ -205,6 +233,7 @@ struct SettingsView: View {
                         if store.isHelperInstalled {
                             Button(role: .destructive) {
                                 store.uninstallBackgroundAgent()
+                                helperActionMessage = "Helper removal requested"
                             } label: {
                                 Label("Remove Helper", systemImage: "xmark.circle")
                                     .foregroundStyle(.primary)
@@ -212,6 +241,7 @@ struct SettingsView: View {
                         } else {
                             Button {
                                 store.installBackgroundAgent()
+                                helperActionMessage = "Helper installation requested"
                             } label: {
                                 Label("Install Helper", systemImage: "bolt.badge.clock")
                                     .foregroundStyle(.primary)
@@ -224,6 +254,7 @@ struct SettingsView: View {
                         HStack(spacing: 8) {
                             Button {
                                 store.runDebugHelperScanNow()
+                                helperActionMessage = "Helper scan started"
                             } label: {
                                 Label("Run Helper Scan Now", systemImage: "play.circle")
                                     .foregroundStyle(.primary)
@@ -232,6 +263,7 @@ struct SettingsView: View {
 
                             Button(role: .destructive) {
                                 store.clearDebugHelperScanInfo()
+                                helperActionMessage = "Helper info cleared"
                             } label: {
                                 Label("Clear Helper Info", systemImage: "trash")
                                     .foregroundStyle(.primary)
@@ -239,11 +271,23 @@ struct SettingsView: View {
                             .disabled(!store.canEdit)
                         }
                         #endif
+
+                        if let helperActionMessage {
+                            Label(helperActionMessage, systemImage: "info.circle")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
                 .scenePadding()
             }
             .listStyle(.plain)
+        }
+        .toolbar {
+            Button("Close") {
+                dismiss()
+            }
+            .help("Close Settings")
         }
         .disabled(!store.canEdit)
         .onChange(of: store.settings) {
@@ -261,12 +305,12 @@ struct SettingsView: View {
 
     private func openFullDiskAccessSettings() {
         FullDiskAccessSupport.openSystemSettings()
-        store.statusMessage = "Opened Full Disk Access settings"
+        permissionsStatusMessage = "Opened Full Disk Access settings"
     }
 
     private func openBackgroundItemsSettings() {
         BackgroundItemsSupport.openSystemSettings()
-        store.statusMessage = "Opened Background Items settings"
+        helperActionMessage = "Opened Background Items settings"
     }
 
     private var fullDiskAccessStatusIcon: String {
@@ -316,6 +360,8 @@ struct SettingsView: View {
         switch store.updateStatus {
         case .failed:
             return .red
+        case .available where store.updateLastError != nil:
+            return .orange
         case .readyToInstall, .downloading, .available:
             return .blue
         case .checking, .installing:
@@ -323,6 +369,10 @@ struct SettingsView: View {
         case .idle, .upToDate:
             return .secondary
         }
+    }
+
+    private var shouldShowUpdateError: Bool {
+        store.updateStatus == .failed || store.updateStatus == .available
     }
 
     private func pickScanRoots() {

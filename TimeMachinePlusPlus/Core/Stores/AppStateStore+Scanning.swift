@@ -71,6 +71,7 @@ extension AppStateStore {
         matches = nextMatches.sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
         lastScanDate = Date()
         statusMessage = "Found \(matches.count) candidate exclusions"
+        rulesStatusMessage = statusMessage
         if isCombinedStartOperation {
             updateOperation(detail: "Found \(matches.count) candidate exclusions", progress: 0.58)
         }
@@ -81,6 +82,7 @@ extension AppStateStore {
         let targets = matches.filter { $0.isSelected && !$0.isExcluded }
         guard !targets.isEmpty else {
             statusMessage = "Nothing new to exclude"
+            rulesStatusMessage = statusMessage
             if isCombinedStartOperation {
                 updateOperation(detail: "No new exclusions to apply", progress: 0.72)
             }
@@ -94,6 +96,7 @@ extension AppStateStore {
         for (offset, target) in targets.enumerated() {
             guard !Task.isCancelled else {
                 statusMessage = "Cancelled after applying \(applied) exclusions"
+                rulesStatusMessage = statusMessage
                 save()
                 return applied
             }
@@ -126,6 +129,7 @@ extension AppStateStore {
         statusMessage = failures.isEmpty
             ? "Applied \(applied) exclusions"
             : "Applied \(applied), failed \(failures.count)."
+        rulesStatusMessage = statusMessage
         if isCombinedStartOperation {
             updateOperation(detail: "Applied \(applied) exclusions", progress: 0.88)
         } else if refreshAfterApply {
@@ -147,11 +151,14 @@ extension AppStateStore {
                 matches[index].isSelected = true
             }
             statusMessage = "Removed exclusion"
+            rulesStatusMessage = statusMessage
             save()
         case .success:
             statusMessage = "Could not remove exclusion"
+            rulesStatusMessage = statusMessage
         case .failure(let error):
             statusMessage = "Could not remove exclusion: \(error.localizedDescription)"
+            rulesStatusMessage = statusMessage
         }
     }
 
@@ -162,6 +169,7 @@ extension AppStateStore {
         }
         guard !targets.isEmpty else {
             statusMessage = "No exclusions selected"
+            rulesStatusMessage = statusMessage
             return
         }
 
@@ -193,6 +201,7 @@ extension AppStateStore {
         statusMessage = failed == 0
             ? "Removed \(removedIDs.count) exclusions"
             : "Removed \(removedIDs.count), failed \(failed)"
+        rulesStatusMessage = statusMessage
     }
 
 }

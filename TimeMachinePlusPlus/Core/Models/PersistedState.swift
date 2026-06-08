@@ -59,13 +59,7 @@ struct PersistedState: Codable {
 
     static var defaults: PersistedState {
         PersistedState(
-            rules: [
-                RegexRule(name: "Node dependencies", pattern: "node_modules/", kind: .gitignore),
-                RegexRule(name: "Python virtualenvs", pattern: ".venv/\nvenv/", kind: .gitignore),
-                RegexRule(name: "Xcode DerivedData", pattern: "DerivedData/", kind: .gitignore),
-                RegexRule(name: "Ruby vendor bundle", pattern: "vendor/bundle/", kind: .gitignore),
-                RegexRule(name: "Build directories", pattern: "build/\n.build/\ndist/", kind: .gitignore)
-            ],
+            rules: RuleTemplate.defaults.map(\.rule),
             manualExclusions: [],
             appliedExclusions: [],
             settings: .defaults

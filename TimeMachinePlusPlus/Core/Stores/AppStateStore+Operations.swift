@@ -15,11 +15,7 @@ extension AppStateStore {
     }
 
     func startConfiguredStartAction() {
-        if settings.startButtonStartsBackup {
-            startScanAndBackup()
-        } else {
-            startScanAndApplyExclusions()
-        }
+        startScanAndApplyExclusions()
     }
 
     func startScanAndApplyExclusions() {
@@ -40,9 +36,11 @@ extension AppStateStore {
 
         if didStartBackupDuringActiveTask {
             statusMessage = "Cancelling backup..."
+            rulesStatusMessage = statusMessage
             _ = try? timeMachine.stopBackup()
         } else {
             statusMessage = "Cancelling..."
+            rulesStatusMessage = statusMessage
         }
     }
 
@@ -53,6 +51,7 @@ extension AppStateStore {
         operationTitle = title
         operationDetail = nil
         operationProgress = nil
+        rulesStatusMessage = title
         didStartBackupDuringActiveTask = false
         beginSleepPrevention(reason: title)
 
@@ -68,6 +67,7 @@ extension AppStateStore {
     func finishOperation(status: String? = nil) {
         if let status {
             statusMessage = status
+            rulesStatusMessage = status
         }
         isWorking = false
         canCancelCurrentOperation = true
@@ -87,12 +87,14 @@ extension AppStateStore {
         operationDetail = nil
         operationProgress = nil
         statusMessage = title
+        rulesStatusMessage = title
         beginSleepPrevention(reason: title)
         return true
     }
 
     func finishBlockingOperation(status: String) {
         statusMessage = status
+        rulesStatusMessage = status
         isWorking = false
         canCancelCurrentOperation = true
         operationTitle = nil
@@ -108,6 +110,7 @@ extension AppStateStore {
         }
         if updateStatus {
             statusMessage = detail
+            rulesStatusMessage = detail
         }
     }
 

@@ -187,3 +187,8 @@ struct RuleRow: View {
         }
     }
 }
+
+#Preview {
+    RuleRow(rule: .constant(.init(name: "Damn", pattern: ""))) {}
+        .previewModifiers()
+}
