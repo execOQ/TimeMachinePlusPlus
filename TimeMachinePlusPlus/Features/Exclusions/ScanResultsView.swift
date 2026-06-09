@@ -35,7 +35,6 @@ struct AppManagedExclusionsView: View {
                     )
                 } else {
                     controlsBar
-                    statusRow
 
                     List(selection: $selection) {
                         ForEach(visibleExclusions) { exclusion in
@@ -104,15 +103,6 @@ struct AppManagedExclusionsView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-    }
-
-    private var statusRow: some View {
-        Label(store.rulesStatusMessage, systemImage: store.isWorking ? "arrow.triangle.2.circlepath" : "info.circle")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .lineLimit(2)
-            .padding(.horizontal, 12)
-            .padding(.bottom, 8)
     }
 
     private func scheduleSelectionPrune() {

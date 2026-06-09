@@ -17,10 +17,12 @@ struct RulePreviewPanel: View {
     var validationError: String?
     var onRefresh: () -> Void
 
+    private static let rowHeight: CGFloat = 26
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Label("Quick Results", systemImage: "bolt")
+                Label("Quick Results", systemImage: "magnifyingglass")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
 
@@ -59,14 +61,39 @@ struct RulePreviewPanel: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
-                VStack(spacing: 0) {
+                List {
                     ForEach(results) { result in
-                        RulePreviewRow(result: result)
-                        if result.id != results.last?.id {
-                            Divider()
+                        HStack(spacing: 8) {
+                            Image(systemName: result.isDirectory ? "folder" : "doc")
+                                .foregroundStyle(.secondary)
+                                .frame(width: 16)
+                            Text(result.path)
+                                .font(.system(.caption, design: .monospaced))
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            Spacer()
                         }
+                        .contextMenu {
+                            Button {
+                                NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: result.path)])
+                            } label: {
+                                Label("Reveal in Finder", systemImage: "finder")
+                            }
+                            Button {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(result.path, forType: .string)
+                            } label: {
+                                Label("Copy Path", systemImage: "doc.on.doc")
+                            }
+                        }
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8))
                     }
                 }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .frame(height: min(CGFloat(results.count), 8) * Self.rowHeight)
                 .background(.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
                 .overlay(
                     RoundedRectangle(cornerRadius: 6)
@@ -80,55 +107,5 @@ struct RulePreviewPanel: View {
                 }
             }
         }
-    }
-}
-
-private struct RulePreviewRow: View {
-    var result: RulePreviewResult
-
-    private var statusImage: String {
-        switch result.status {
-        case .excluded: return "checkmark.circle.fill"
-        case .included: return "circle"
-        case .missing: return "questionmark.circle"
-        case .matched: return "line.3.horizontal.decrease.circle"
-        }
-    }
-
-    private var statusColor: Color {
-        switch result.status {
-        case .excluded: return .green
-        case .included: return .secondary
-        case .missing: return .orange
-        case .matched: return .blue
-        }
-    }
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: result.isDirectory ? "folder" : "doc")
-                .foregroundStyle(.secondary)
-                .frame(width: 18)
-
-            Text(result.path)
-                .font(.system(.caption, design: .monospaced))
-                .lineLimit(1)
-                .truncationMode(.middle)
-
-            Spacer()
-
-            if let sizeBytes = result.sizeBytes {
-                Text(Formatters.fileSize(sizeBytes))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-            }
-
-            Label(result.status.label, systemImage: statusImage)
-                .font(.caption)
-                .foregroundStyle(statusColor)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
     }
 }
