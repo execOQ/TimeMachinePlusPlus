@@ -3,6 +3,7 @@ import SwiftUI
 
 struct RulesView: View {
     @Environment(AppStateStore.self) private var store
+    @Environment(\.undoManager) private var undoManager
     var showsHeader: Bool = true
     @State private var autosaveTask: Task<Void, Never>?
     @State private var isTemplateSheetPresented = false
@@ -11,12 +12,12 @@ struct RulesView: View {
     var body: some View {
         @Bindable var store = store
 
-        PageView(title: "Rules", subtitle: "Exclude by pattern or add specific files and folders") {
+        PageView(title: "Rules", subtitle: "Exclude by pattern or add exact paths") {
             VStack(alignment: .leading, spacing: 12) {
                 List {
                     ForEach($store.rules) { $rule in
                         RuleRow(rule: $rule) {
-                            store.deleteRule(rule)
+                            store.deleteRule(rule, undoManager: undoManager)
                         }
                     }
                 }
@@ -36,26 +37,28 @@ struct RulesView: View {
 
                 Menu {
                     Button {
-                        store.addRule()
+                        store.addRule(undoManager: undoManager)
                     } label: {
                         Label("Add Rule", systemImage: "plus")
                     }
+
+                    Button {
+                        pickPaths()
+                    } label: {
+                        Label("Add Path", systemImage: "folder.badge.plus")
+                    }
+
+                    Divider()
 
                     Button {
                         isTemplateSheetPresented = true
                     } label: {
                         Label("Add from Templates", systemImage: "square.grid.2x2")
                     }
-
-                    Button {
-                        pickSpecificPaths()
-                    } label: {
-                        Label("Add Specific", systemImage: "folder.badge.plus")
-                    }
                 } label: {
                     Label("Add", systemImage: "plus")
                 }
-                .help("Add a new exclusion rule, or add specific files and folders to exclude.")
+                .help("Add a new exclusion rule, or add exact paths to exclude.")
                 .disabled(!store.canEdit)
             }
 
@@ -93,7 +96,7 @@ struct RulesView: View {
     }
 
     @MainActor
-    private func pickSpecificPaths() {
+    private func pickPaths() {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = true
@@ -101,7 +104,7 @@ struct RulesView: View {
         panel.treatsFilePackagesAsDirectories = true
         panel.prompt = "Add"
         guard panel.runModal() == .OK else { return }
-        store.addSpecificPaths(panel.urls)
+        store.addPathRules(panel.urls, undoManager: undoManager)
     }
 
     private func scheduleAutosave() {
@@ -117,6 +120,7 @@ struct RulesView: View {
 private struct RuleTemplatesSheet: View {
     @Environment(AppStateStore.self) private var store
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.undoManager) private var undoManager
 
     private var categories: [String] {
         var seen: Set<String> = []
@@ -182,7 +186,7 @@ private struct RuleTemplatesSheet: View {
             }
 
             Button {
-                store.addMissingRules(from: RuleTemplate.common)
+                store.addMissingRules(from: RuleTemplate.common, undoManager: undoManager)
             } label: {
                 Label("Add All Missing", systemImage: "plus.circle")
             }
@@ -218,6 +222,7 @@ private struct RuleTemplatesSheet: View {
 
 private struct RuleTemplateRow: View {
     @Environment(AppStateStore.self) private var store
+    @Environment(\.undoManager) private var undoManager
     var template: RuleTemplate
 
     private var isAdded: Bool {
@@ -248,7 +253,7 @@ private struct RuleTemplateRow: View {
             Spacer(minLength: 12)
 
             Button {
-                store.addRule(from: template)
+                store.addRule(from: template, undoManager: undoManager)
             } label: {
                 Label(isAdded ? "Added" : "Add", systemImage: isAdded ? "checkmark" : "plus")
             }
