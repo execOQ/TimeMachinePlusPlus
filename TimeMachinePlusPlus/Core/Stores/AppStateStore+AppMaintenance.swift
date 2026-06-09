@@ -6,6 +6,10 @@ import UserNotifications
 
 extension AppStateStore {
     func configureAppUpdater() {
+        #if DEBUG
+        appUpdater.skipCodeSignValidation = true
+        #endif
+
         appUpdater.$state
             .receive(on: RunLoop.main)
             .sink { [weak self] state in
@@ -249,7 +253,7 @@ extension AppStateStore {
                 }
                 return "The automatic updater could not find an installable release asset."
             case .codeSigningIdentity:
-                return "The downloaded app could not be verified against the current app's code signing identity."
+                return "The downloaded app is signed differently than the currently running app. This can happen when checking a Developer ID release from an Xcode development build."
             case .invalidDownloadedBundle:
                 return "The downloaded archive did not contain a valid app bundle."
             case .unzipFailed:

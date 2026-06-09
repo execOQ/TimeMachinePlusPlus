@@ -90,6 +90,7 @@ struct SettingsView: View {
                                     : "TimeMachine++ will not open at login"
                             }
                         ))
+                        .frame(maxWidth: .infinity, alignment: .leading)
 
                         if let appStatusMessage {
                             Label(appStatusMessage, systemImage: "info.circle")
@@ -130,11 +131,17 @@ struct SettingsView: View {
                             .font(.caption)
                             .foregroundStyle(updateStatusColor)
 
-                        if store.updateStatus == .downloading, let progress = store.updateDownloadProgress {
-                            ProgressView(value: progress) {
-                                Text("Downloading update")
-                            } currentValueLabel: {
-                                Text("\(Int(progress * 100))%")
+                        if store.updateStatus == .downloading {
+                            if let progress = store.updateDownloadProgress {
+                                ProgressView(value: progress) {
+                                    Text("Downloading update")
+                                } currentValueLabel: {
+                                    Text("\(Int(progress * 100))%")
+                                }
+                            } else {
+                                ProgressView {
+                                    Text("Preparing download")
+                                }
                             }
                         }
 
