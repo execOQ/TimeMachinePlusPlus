@@ -1,17 +1,55 @@
 import Foundation
 
+struct RuleValidationIssue {
+    let message: String
+    let suggestion: String?
+}
+
 enum RuleMatcher {
     static func validationError(for rule: RegexRule) -> String? {
+        validationIssue(for: rule)?.message
+    }
+
+    static func validationIssue(for rule: RegexRule) -> RuleValidationIssue? {
         switch rule.kind {
         case .specific:
             let p = rule.pattern.trimmingCharacters(in: .whitespacesAndNewlines)
-            if p.isEmpty { return "Enter an absolute path." }
-            if !p.hasPrefix("/") { return "Path must start with /." }
+            if p.isEmpty {
+                return RuleValidationIssue(message: "Enter an absolute path.", suggestion: "Example: /Users/you/Library/Caches")
+            }
+            if p.hasPrefix("~") {
+                return RuleValidationIssue(
+                    message: "Path must start with /.",
+                    suggestion: "Expand ~ to your home directory, e.g. /Users/\(NSUserName())\(p.dropFirst())"
+                )
+            }
+            if !p.hasPrefix("/") {
+                return RuleValidationIssue(message: "Path must start with /.", suggestion: "Prefix the path with / for an absolute path.")
+            }
             return nil
+
         case .gitignore:
-            return gitignorePatterns(from: rule.pattern).isEmpty ? "Enter at least one git-like pattern." : nil
+            let patterns = gitignorePatterns(from: rule.pattern)
+            if patterns.isEmpty {
+                let trimmed = rule.pattern.trimmingCharacters(in: .whitespacesAndNewlines)
+                if trimmed.hasPrefix("^") || trimmed.contains(".*") || trimmed.hasSuffix("$") {
+                    return RuleValidationIssue(
+                        message: "Enter at least one git-like pattern.",
+                        suggestion: "This looks like a regex. Switch the mode to 'Regex' to use it."
+                    )
+                }
+                if trimmed.hasPrefix("/") {
+                    return RuleValidationIssue(
+                        message: "Enter at least one git-like pattern.",
+                        suggestion: "Git-like patterns don't use a leading /. Try node_modules/ instead of /node_modules/."
+                    )
+                }
+                return RuleValidationIssue(message: "Enter at least one git-like pattern.", suggestion: "Examples: node_modules/, **/.venv/, *.xcactivitylog")
+            }
+            return nil
+
         case .regex:
-            return RegexValidator.validate(rule.pattern)
+            return RegexValidator.validateWithSuggestion(rule.pattern)
         }
     }
 

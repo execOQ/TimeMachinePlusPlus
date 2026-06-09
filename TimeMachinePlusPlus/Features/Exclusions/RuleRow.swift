@@ -33,8 +33,8 @@ struct RuleRow: View {
     @State private var previewKey: RulePreviewKey?
     @State private var hasRequestedPreview = false
 
-    private var validationError: String? {
-        RuleMatcher.validationError(for: rule)
+    private var validationIssue: RuleValidationIssue? {
+        RuleMatcher.validationIssue(for: rule)
     }
 
     var body: some View {
@@ -58,27 +58,43 @@ struct RuleRow: View {
                         .textFieldStyle(.roundedBorder)
                         .font(.system(.body, design: .monospaced))
                         .lineLimit(1 ... 4)
+
+                    if rule.kind == .regex {
+                        RegexSuggestionBar(pattern: rule.pattern) { insertion in
+                            rule.pattern += insertion
+                        }
+                    }
                 }
 
                 Text(rule.kind.help)
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                if let validationError {
-                    Label(validationError, systemImage: "exclamationmark.triangle")
-                        .foregroundStyle(.orange)
-                        .font(.caption)
+                if let validationIssue {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Label(validationIssue.message, systemImage: "exclamationmark.triangle")
+                            .foregroundStyle(.orange)
+                            .font(.caption)
+                        if let suggestion = validationIssue.suggestion {
+                            Text(suggestion)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .padding(.leading, 20)
+                        }
+                    }
                 }
 
-                RulePreviewPanel(
-                    isLoading: isLoadingPreview,
-                    results: previewResults,
-                    resultLimit: store.settings.previewResultLimit,
-                    hasRequestedPreview: hasRequestedPreview,
-                    isDisabled: !rule.isEnabled,
-                    validationError: validationError
-                ) {
-                    refreshPreview(debounce: false)
+                if rule.kind != .specific {
+                    RulePreviewPanel(
+                        isLoading: isLoadingPreview,
+                        results: previewResults,
+                        resultLimit: store.settings.previewResultLimit,
+                        hasRequestedPreview: hasRequestedPreview,
+                        isDisabled: !rule.isEnabled,
+                        validationError: validationIssue?.message
+                    ) {
+                        refreshPreview(debounce: false)
+                    }
                 }
             }
             .padding(.top, 8)
@@ -87,9 +103,17 @@ struct RuleRow: View {
                 Toggle("", isOn: $rule.isEnabled)
                     .labelsHidden()
 
-                TextField("Rule name", text: $rule.name)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(minWidth: 180)
+                HStack(spacing: 4) {
+                    TextField("Rule name", text: $rule.name)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(minWidth: 180)
+
+                    if validationIssue != nil {
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .foregroundStyle(.red)
+                            .help("This rule has an error and will be skipped during scans.")
+                    }
+                }
 
                 Picker("Mode", selection: $rule.kind) {
                     ForEach(RuleKind.allCases) { kind in
@@ -113,6 +137,12 @@ struct RuleRow: View {
             }
             // to click on disclosure chevron without toggling on/off
             .padding(.leading, 10)
+            .padding(.vertical, 4)
+            .background(
+                validationIssue != nil
+                    ? Color.red.opacity(0.07).cornerRadius(6)
+                    : nil
+            )
         }
         .padding(.vertical, 8)
         .onChange(of: isExpanded) {
@@ -124,10 +154,12 @@ struct RuleRow: View {
             }
         }
         .onChange(of: rule) {
-            guard isExpanded else { return }
             let nextKey = RulePreviewKey(rule: rule)
             guard nextKey != previewKey else { return }
             previewKey = nextKey
+            if !isExpanded {
+                isExpanded = true
+            }
             refreshPreview(debounce: true)
         }
         .onChange(of: store.settings.scanRoots) {
@@ -165,7 +197,7 @@ struct RuleRow: View {
     private func refreshPreview(debounce: Bool) {
         previewTask?.cancel()
         hasRequestedPreview = true
-        guard rule.isEnabled, validationError == nil else {
+        guard rule.isEnabled, validationIssue == nil else {
             previewResults = []
             isLoadingPreview = false
             return
@@ -185,6 +217,36 @@ struct RuleRow: View {
                 isLoadingPreview = false
             }
         }
+    }
+}
+
+private struct RegexSuggestionBar: View {
+    let pattern: String
+    let onInsert: (String) -> Void
+
+    private var suggestions: [RegexSuggestionProvider.Suggestion] {
+        RegexSuggestionProvider.suggestions(for: pattern)
+    }
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 5) {
+                ForEach(suggestions) { suggestion in
+                    Button {
+                        onInsert(suggestion.insertion)
+                    } label: {
+                        Text(suggestion.display)
+                            .font(.system(.caption, design: .monospaced))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.mini)
+                    .help(suggestion.description)
+                }
+            }
+        }
+        .animation(.easeInOut(duration: 0.15), value: suggestions.map(\.id))
     }
 }
 

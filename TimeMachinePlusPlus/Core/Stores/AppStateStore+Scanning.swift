@@ -7,11 +7,12 @@ extension AppStateStore {
     func scanNow() async {
         updateOperation(detail: "Scanning rules", progress: isCombinedStartOperation ? 0.12 : nil)
 
-        let specificRules = rules.filter { $0.kind == .specific && $0.isEnabled && !$0.pattern.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let validRules = rules.filter { RuleMatcher.validationIssue(for: $0) == nil }
+        let specificRules = validRules.filter { $0.kind == .specific && $0.isEnabled && !$0.pattern.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
         updateOperation(detail: "Searching scan roots", progress: isCombinedStartOperation ? 0.20 : nil)
-        let scanned = await Task.detached(priority: .userInitiated) { [settings, rules, scanner] in
-            scanner.scan(settings: settings, rules: rules)
+        let scanned = await Task.detached(priority: .userInitiated) { [settings, scanner] in
+            scanner.scan(settings: settings, rules: validRules)
         }.value
         guard !Task.isCancelled else { return }
 
