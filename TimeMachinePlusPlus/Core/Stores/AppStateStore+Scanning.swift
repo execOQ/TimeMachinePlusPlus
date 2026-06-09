@@ -8,7 +8,7 @@ extension AppStateStore {
         updateOperation(detail: "Scanning rules", progress: isCombinedStartOperation ? 0.12 : nil)
 
         let validRules = rules.filter { RuleMatcher.validationIssue(for: $0) == nil }
-        let specificRules = validRules.filter { $0.kind == .specific && $0.isEnabled && !$0.pattern.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let pathRules = validRules.filter { $0.kind == .path && $0.isEnabled && !$0.pattern.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
         updateOperation(detail: "Searching scan roots", progress: isCombinedStartOperation ? 0.20 : nil)
         let scanned = await Task.detached(priority: .userInitiated) { [settings, scanner] in
@@ -16,10 +16,10 @@ extension AppStateStore {
         }.value
         guard !Task.isCancelled else { return }
 
-        updateOperation(detail: "Collecting specific paths", progress: isCombinedStartOperation ? 0.34 : nil)
-        // Collect all paths for specific rules that exist on disk and aren't already in scanned results
+        updateOperation(detail: "Collecting path rules", progress: isCombinedStartOperation ? 0.34 : nil)
+        // Collect path rules that exist on disk and aren't already in scanned results.
         let scannedPaths = Set(scanned.map(\.0.path))
-        let specificCandidates: [(path: String, rule: RegexRule, isDirectory: Bool)] = specificRules.compactMap { rule in
+        let pathCandidates: [(path: String, rule: RegexRule, isDirectory: Bool)] = pathRules.compactMap { rule in
             let path = rule.pattern.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !path.isEmpty, !scannedPaths.contains(path), FileManager.default.fileExists(atPath: path) else { return nil }
             let isDir = (try? URL(fileURLWithPath: path).resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
@@ -29,7 +29,7 @@ extension AppStateStore {
 
         updateOperation(detail: "Checking Time Machine status", progress: isCombinedStartOperation ? 0.48 : nil)
         // Check exclusion status with bounded fan-out so large scans do not spawn a tmutil process storm.
-        let allPaths = scanned.map(\.0.path) + specificCandidates.map(\.path)
+        let allPaths = scanned.map(\.0.path) + pathCandidates.map(\.path)
         let exclusionStatuses = await Task.detached(priority: .userInitiated) { [timeMachine] in
             await Self.exclusionStatuses(
                 for: allPaths,
@@ -55,7 +55,7 @@ extension AppStateStore {
             )
         }
 
-        for item in specificCandidates {
+        for item in pathCandidates {
             let excluded = exclusionStatuses[item.path] ?? false
             nextMatches.append(
                 ScanMatch(

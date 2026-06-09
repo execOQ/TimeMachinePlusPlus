@@ -134,14 +134,14 @@ extension AppStateStore {
         updateStatusMessage = "Preparing update download..."
         statusMessage = updateStatusMessage
 
-        Task { @MainActor in
+        Task { @MainActor [weak self] in
             let availableRelease: GitHubReleaseMetadata?
             if let knownAvailableRelease {
                 availableRelease = knownAvailableRelease
             } else {
-                availableRelease = await fetchAvailableGitHubRelease()
+                availableRelease = await self?.fetchAvailableGitHubRelease()
             }
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, let self else { return }
 
             if let availableRelease {
                 capture(metadata: availableRelease)
@@ -285,7 +285,7 @@ extension AppStateStore {
         let url = URL(string: "https://api.github.com/repos/execOQ/TimeMachineAdvanced/releases")!
         let (data, response) = try await URLSession.shared.data(from: url)
 
-        guard let httpResponse = response as? HTTPURLResponse, 200..<300 ~= httpResponse.statusCode else {
+        guard let httpResponse = response as? HTTPURLResponse, 200 ..< 300 ~= httpResponse.statusCode else {
             throw URLError(.badServerResponse)
         }
 

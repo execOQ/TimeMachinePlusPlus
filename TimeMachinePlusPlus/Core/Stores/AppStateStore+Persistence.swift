@@ -6,14 +6,14 @@ extension AppStateStore {
         var state = storage.load()
         var shouldSaveMigratedState = false
 
-        // Migrate legacy manual exclusions into specific rules
+        // Migrate legacy manual exclusions into path rules.
         if !state.manualExclusions.isEmpty {
-            let existing = Set(state.rules.filter { $0.kind == .specific }.map(\.pattern))
+            let existing = Set(state.rules.filter { $0.kind == .path }.map(\.pattern))
             let migrated = state.manualExclusions
                 .filter { !existing.contains($0.path) }
                 .map { manual in
                     let name = URL(fileURLWithPath: manual.path).lastPathComponent
-                    return RegexRule(name: name, pattern: manual.path, kind: .specific, isEnabled: manual.isEnabled, includeFiles: true)
+                    return RegexRule(name: name, pattern: manual.path, kind: .path, isEnabled: manual.isEnabled, includeFiles: true)
             }
             state.rules.append(contentsOf: migrated)
             state.manualExclusions = []

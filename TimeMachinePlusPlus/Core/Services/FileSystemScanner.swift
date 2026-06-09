@@ -8,14 +8,14 @@ struct FileSystemScanner {
     }
 
     func scan(settings: AppSettings, rules: [RegexRule]) -> [Candidate: RegexRule] {
-        let enabledRules = rules.filter { $0.isEnabled && $0.kind != .specific && RuleMatcher.validationError(for: $0) == nil }
+        let enabledRules = rules.filter { $0.isEnabled && $0.kind != .path && RuleMatcher.validationError(for: $0) == nil }
 
         guard !enabledRules.isEmpty else { return [:] }
         return scan(settings: settings, enabledRules: enabledRules)
     }
 
     func scan(settings: AppSettings, rule: RegexRule, limit: Int? = nil) -> [Candidate] {
-        guard rule.isEnabled, rule.kind != .specific, RuleMatcher.validationError(for: rule) == nil else { return [] }
+        guard rule.isEnabled, rule.kind != .path, RuleMatcher.validationError(for: rule) == nil else { return [] }
         return scan(settings: settings, enabledRule: rule, limit: limit)
     }
 
