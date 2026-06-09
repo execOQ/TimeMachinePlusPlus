@@ -10,7 +10,7 @@ final class TimeMachinePlusPlusTests: XCTestCase {
         XCTAssertNotNil(RuleMatcher.validationError(for: invalidRule))
     }
 
-    func testScannerMatchesGitLikeDirectoryAndSkipsDescendants() throws {
+    func testScannerMatchesPatternDirectoryAndSkipsDescendants() throws {
         let root = FileManager.default.temporaryDirectory.standardizedFileURL
             .appendingPathComponent("TimeMachinePlusPlusTests-\(UUID().uuidString)", isDirectory: true)
         let nodeModules = root.appendingPathComponent("project/node_modules", isDirectory: true)
@@ -23,7 +23,7 @@ final class TimeMachinePlusPlusTests: XCTestCase {
             scanIntervalMinutes: AppSettings.dailyScanIntervalMinutes,
             maxDepth: 8
         )
-        let rule = RegexRule(name: "Node", pattern: "node_modules/", kind: .gitignore)
+        let rule = RegexRule(name: "Node", pattern: "node_modules/", kind: .pattern)
 
         let matches = FileSystemScanner().scan(settings: settings, rules: [rule])
 
@@ -48,7 +48,7 @@ final class TimeMachinePlusPlusTests: XCTestCase {
 
         let matches = FileSystemScanner().scan(
             settings: settings,
-            rule: RegexRule(name: "Build", pattern: "build/", kind: .gitignore)
+            rule: RegexRule(name: "Build", pattern: "build/", kind: .pattern)
         )
 
         XCTAssertEqual(matches.map(\.path), [build.path])
@@ -72,15 +72,15 @@ final class TimeMachinePlusPlusTests: XCTestCase {
         }
     }
 
-    func testGitLikeRuleMatchesDirectoryPattern() {
-        let rule = RegexRule(name: "Build", pattern: "build/", kind: .gitignore)
+    func testPatternRuleMatchesDirectoryPattern() {
+        let rule = RegexRule(name: "Build", pattern: "build/", kind: .pattern)
 
         XCTAssertTrue(RuleMatcher.matches(path: "/Users/me/project/build", isDirectory: true, rule: rule))
         XCTAssertFalse(RuleMatcher.matches(path: "/Users/me/project/build.log", isDirectory: false, rule: rule))
     }
 
-    func testGitLikeRuleAcceptsMultipleDirectoryPatterns() {
-        let rule = RegexRule(name: "Virtualenvs", pattern: ".venv/\nvenv/", kind: .gitignore)
+    func testPatternRuleAcceptsMultipleDirectoryPatterns() {
+        let rule = RegexRule(name: "Virtualenvs", pattern: ".venv/\nvenv/", kind: .pattern)
 
         XCTAssertTrue(RuleMatcher.matches(path: "/Users/me/app/.venv", isDirectory: true, rule: rule))
         XCTAssertTrue(RuleMatcher.matches(path: "/Users/me/app/venv", isDirectory: true, rule: rule))

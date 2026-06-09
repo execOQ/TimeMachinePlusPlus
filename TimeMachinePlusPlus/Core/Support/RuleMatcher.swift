@@ -12,7 +12,7 @@ enum RuleMatcher {
 
     static func validationIssue(for rule: RegexRule) -> RuleValidationIssue? {
         switch rule.kind {
-        case .specific:
+        case .path:
             let p = rule.pattern.trimmingCharacters(in: .whitespacesAndNewlines)
             if p.isEmpty {
                 return RuleValidationIssue(message: "Enter an absolute path.", suggestion: "Example: /Users/you/Library/Caches")
@@ -28,23 +28,23 @@ enum RuleMatcher {
             }
             return nil
 
-        case .gitignore:
-            let patterns = gitignorePatterns(from: rule.pattern)
+        case .pattern:
+            let patterns = pathPatterns(from: rule.pattern)
             if patterns.isEmpty {
                 let trimmed = rule.pattern.trimmingCharacters(in: .whitespacesAndNewlines)
                 if trimmed.hasPrefix("^") || trimmed.contains(".*") || trimmed.hasSuffix("$") {
                     return RuleValidationIssue(
-                        message: "Enter at least one git-like pattern.",
+                        message: "Enter at least one path pattern.",
                         suggestion: "This looks like a regex. Switch the mode to 'Regex' to use it."
                     )
                 }
                 if trimmed.hasPrefix("/") {
                     return RuleValidationIssue(
-                        message: "Enter at least one git-like pattern.",
-                        suggestion: "Git-like patterns don't use a leading /. Try node_modules/ instead of /node_modules/."
+                        message: "Enter at least one path pattern.",
+                        suggestion: "Pattern mode doesn't use a leading /. Try node_modules/ instead of /node_modules/."
                     )
                 }
-                return RuleValidationIssue(message: "Enter at least one git-like pattern.", suggestion: "Examples: node_modules/, **/.venv/, *.xcactivitylog")
+                return RuleValidationIssue(message: "Enter at least one path pattern.", suggestion: "Examples: node_modules/, **/.venv/, *.xcactivitylog")
             }
             return nil
 
@@ -55,12 +55,12 @@ enum RuleMatcher {
 
     static func matches(path: String, isDirectory: Bool, rule: RegexRule) -> Bool {
         switch rule.kind {
-        case .specific:
+        case .path:
             return path == rule.pattern.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        case .gitignore:
-            return gitignorePatterns(from: rule.pattern).contains { pattern in
-                gitignorePattern(pattern, matches: path, isDirectory: isDirectory)
+        case .pattern:
+            return pathPatterns(from: rule.pattern).contains { pattern in
+                pathPattern(pattern, matches: path, isDirectory: isDirectory)
             }
 
         case .regex:
@@ -70,7 +70,7 @@ enum RuleMatcher {
         }
     }
 
-    private static func gitignorePatterns(from input: String) -> [String] {
+    private static func pathPatterns(from input: String) -> [String] {
         input
             .components(separatedBy: .newlines)
             .flatMap { $0.components(separatedBy: ",") }
@@ -78,7 +78,7 @@ enum RuleMatcher {
             .filter { !$0.isEmpty && !$0.hasPrefix("#") && !$0.hasPrefix("!") }
     }
 
-    private static func gitignorePattern(_ rawPattern: String, matches path: String, isDirectory: Bool) -> Bool {
+    private static func pathPattern(_ rawPattern: String, matches path: String, isDirectory: Bool) -> Bool {
         var pattern = rawPattern
         let directoryOnly = pattern.hasSuffix("/")
 

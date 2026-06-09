@@ -53,10 +53,10 @@ enum RegexValidator {
             return "Check your backslash escapes — use \\. \\/ \\( etc., or \\\\ for a literal backslash."
         }
 
-        // Looks like a gitignore glob
+        // Looks like a path pattern.
         if !pattern.contains("^") && !pattern.contains("$") && !pattern.contains("(") &&
             (pattern.contains("**/") || pattern.hasSuffix("/") || (!pattern.contains(".") && !pattern.contains("["))) {
-            return "This looks like a gitignore-style glob. Try switching the mode to 'Git-like'."
+            return "This looks like a path pattern. Try switching the mode to 'Pattern'."
         }
 
         return nil
