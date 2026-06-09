@@ -25,8 +25,11 @@ private struct RulePreviewKey: Equatable {
 struct RuleRow: View {
     @Binding var rule: RegexRule
     @Environment(AppStateStore.self) private var store
+    @Environment(\.undoManager) private var undoManager
     var onDelete: () -> Void
     @State private var isExpanded = false
+    @State private var isAIHelperPresented = false
+    @State private var aiGenerationState = AIRegexGenerationState()
     @State private var isLoadingPreview = false
     @State private var previewResults: [RulePreviewResult] = []
     @State private var previewTask: Task<Void, Never>?
@@ -40,30 +43,66 @@ struct RuleRow: View {
     var body: some View {
         DisclosureGroup(isExpanded: $isExpanded) {
             VStack(alignment: .leading, spacing: 10) {
-                if rule.kind == .specific {
-                    HStack(spacing: 8) {
-                        TextField(rule.kind.placeholder, text: $rule.pattern)
-                            .textFieldStyle(.roundedBorder)
-                            .font(.system(.body, design: .monospaced))
-
-                        Button {
-                            pickSpecificPath(into: $rule)
-                        } label: {
-                            Image(systemName: "folder")
-                        }
-                        .help("Browse for a file or folder")
-                    }
-                } else {
-                    TextField(rule.kind.placeholder, text: $rule.pattern, axis: .vertical)
+                HStack(spacing: 8) {
+                    TextField(rule.kind.placeholder, text: $rule.pattern)
                         .textFieldStyle(.roundedBorder)
                         .font(.system(.body, design: .monospaced))
-                        .lineLimit(1 ... 4)
 
-                    if rule.kind == .regex {
-                        RegexSuggestionBar(pattern: rule.pattern) { insertion in
-                            rule.pattern += insertion
+                    if rule.kind == .path {
+                        Button {
+                            pickPath(into: $rule)
+                        } label: {
+                            Image(systemName: "folder")
+                                .frame(width: 18, height: 18)
+                        }
+                        .buttonStyle(.bordered)
+                        .help("Browse for a file or folder")
+                    } else if rule.kind == .regex, AppleIntelligenceRegexHelper.isAvailable {
+                        Button {
+                            isAIHelperPresented = true
+                        } label: {
+                            Image(systemName: "sparkles")
+                                .frame(width: 18, height: 18)
+                        }
+                        .buttonStyle(.bordered)
+                        .help("Generate a regex with Apple Intelligence")
+                        .popover(isPresented: $isAIHelperPresented, arrowEdge: .bottom) {
+                            RegexIntelligencePopover(
+                                pattern: rule.pattern,
+                                request: $rule.lastAIRequest,
+                                generatedPattern: $rule.lastAIGeneratedPattern,
+                                generatedForRequest: $rule.lastAIGeneratedForRequest,
+                                generationState: aiGenerationState,
+                                onUse: { generated in
+                                    let previousPattern = rule.pattern
+                                    let ruleID = rule.id
+                                    undoManager?.registerUndo(withTarget: store) { store in
+                                        if let idx = store.rules.firstIndex(where: { $0.id == ruleID }) {
+                                            undoManager?.registerUndo(withTarget: store) { store in
+                                                if let idx = store.rules.firstIndex(where: { $0.id == ruleID }) {
+                                                    store.rules[idx].pattern = generated
+                                                }
+                                            }
+                                            undoManager?.setActionName("Apply AI Pattern")
+                                            store.rules[idx].pattern = previousPattern
+                                        }
+                                    }
+                                    undoManager?.setActionName("Apply AI Pattern")
+                                    rule.pattern = generated
+                                    isAIHelperPresented = false
+                                }
+                            )
                         }
                     }
+                }
+
+                if rule.kind == .regex {
+                    RegexSuggestionBar(
+                        rule: $rule,
+                        onInsert: { insertion in
+                            rule.pattern += insertion
+                        }
+                    )
                 }
 
                 Text(rule.kind.help)
@@ -84,7 +123,7 @@ struct RuleRow: View {
                     }
                 }
 
-                if rule.kind != .specific {
+                if rule.kind != .path {
                     RulePreviewPanel(
                         isLoading: isLoadingPreview,
                         results: previewResults,
@@ -100,32 +139,31 @@ struct RuleRow: View {
             .padding(.top, 8)
         } label: {
             HStack(spacing: 12) {
-                Toggle("", isOn: $rule.isEnabled)
-                    .labelsHidden()
-
-                HStack(spacing: 4) {
-                    TextField("Rule name", text: $rule.name)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(minWidth: 180)
-
-                    if validationIssue != nil {
-                        Image(systemName: "exclamationmark.circle.fill")
-                            .foregroundStyle(.red)
-                            .help("This rule has an error and will be skipped during scans.")
-                    }
+                if validationIssue != nil {
+                    Image(systemName: "exclamationmark.circle.fill")
+                        .foregroundStyle(.red)
+                        .help("This rule has an error and will be skipped during scans.")
+                } else {
+                    Toggle("", isOn: $rule.isEnabled)
+                        .labelsHidden()
                 }
 
-                Picker("Mode", selection: $rule.kind) {
+                TextField("Rule name", text: $rule.name)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(minWidth: 180)
+
+                Picker("", selection: $rule.kind) {
                     ForEach(RuleKind.allCases) { kind in
                         Text(kind.title).tag(kind)
                     }
                 }
-                .pickerStyle(.segmented)
-                .frame(width: 250)
+                .pickerStyle(.menu)
+                .labelsHidden()
+                .frame(width: 100)
 
                 Toggle("Files", isOn: $rule.includeFiles)
-                    .help("Allow this rule to match files as well as folders. Not applicable in 'specific' mode.")
-                    .disabled(rule.kind == .specific)
+                    .help("Allow this rule to match files as well as folders. Not applicable in Path mode.")
+                    .disabled(rule.kind == .path)
 
                 Spacer()
 
@@ -136,7 +174,7 @@ struct RuleRow: View {
                 .help("Delete rule")
             }
             // to click on disclosure chevron without toggling on/off
-            .padding(.leading, 10)
+            .padding(.horizontal, 10)
             .padding(.vertical, 4)
             .background(
                 validationIssue != nil
@@ -145,6 +183,7 @@ struct RuleRow: View {
             )
         }
         .padding(.vertical, 8)
+        .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
         .onChange(of: isExpanded) {
             if isExpanded {
                 previewKey = RulePreviewKey(rule: rule)
@@ -177,7 +216,7 @@ struct RuleRow: View {
         }
     }
 
-    private func pickSpecificPath(into rule: Binding<RegexRule>) {
+    private func pickPath(into rule: Binding<RegexRule>) {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = true
@@ -221,17 +260,41 @@ struct RuleRow: View {
 }
 
 private struct RegexSuggestionBar: View {
-    let pattern: String
+    @Binding var rule: RegexRule
     let onInsert: (String) -> Void
 
     private var suggestions: [RegexSuggestionProvider.Suggestion] {
-        RegexSuggestionProvider.suggestions(for: pattern)
+        RegexSuggestionProvider.suggestions(for: rule.pattern)
     }
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 5) {
-                ForEach(suggestions) { suggestion in
+                ForEach(Array(suggestions.prefix(10).enumerated()), id: \.element.id) { index, suggestion in
+                    let keyChar: Character = index < 9 ? Character("\(index + 1)") : "0"
+                    Button {
+                        onInsert(suggestion.insertion)
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text(suggestion.display)
+                                .font(.system(.caption, design: .monospaced))
+                        }
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .overlay(alignment: .trailing) {
+                            Text(index < 9 ? "\(index + 1)" : "0")
+                                .font(.system(.caption2, design: .monospaced))
+                                .foregroundStyle(.tertiary)
+                                .offset(x: 5)
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.mini)
+                    .help("⌘\(index < 9 ? "\(index + 1)" : "0")  |  \(suggestion.description)")
+                    .keyboardShortcut(KeyEquivalent(keyChar), modifiers: .command)
+                }
+
+                ForEach(suggestions.dropFirst(10)) { suggestion in
                     Button {
                         onInsert(suggestion.insertion)
                     } label: {
@@ -246,7 +309,151 @@ private struct RegexSuggestionBar: View {
                 }
             }
         }
+        .frame(height: 20)
         .animation(.easeInOut(duration: 0.15), value: suggestions.map(\.id))
+    }
+}
+
+@MainActor
+@Observable
+private final class AIRegexGenerationState {
+    var isGenerating = false
+    var errorMessage: String?
+    private var task: Task<Void, Never>?
+
+    func generate(
+        request: String,
+        currentPattern: String,
+        onSuccess: @escaping (String) -> Void
+    ) {
+        task?.cancel()
+        errorMessage = nil
+        isGenerating = true
+
+        task = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let result = try await AppleIntelligenceRegexHelper.generateRegex(for: request, currentPattern: currentPattern)
+                guard !Task.isCancelled else { return }
+                onSuccess(result)
+                self.isGenerating = false
+            } catch {
+                guard !Task.isCancelled else { return }
+                self.errorMessage = error.localizedDescription
+                self.isGenerating = false
+            }
+        }
+    }
+}
+
+private struct RegexIntelligencePopover: View {
+    let pattern: String
+    @Binding var request: String
+    @Binding var generatedPattern: String
+    @Binding var generatedForRequest: String
+    var generationState: AIRegexGenerationState
+    let onUse: (String) -> Void
+    @Environment(AppStateStore.self) private var store
+
+    private var trimmedRequest: String {
+        request.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    private var isRequestLongEnough: Bool { trimmedRequest.count >= 8 }
+    private var isAlreadyGenerated: Bool {
+        !generationState.isGenerating &&
+        !generatedPattern.isEmpty &&
+        !generatedForRequest.isEmpty &&
+        trimmedRequest == generatedForRequest
+    }
+
+    private func primaryAction() {
+        if isAlreadyGenerated {
+            onUse(generatedPattern)
+        } else if isRequestLongEnough && !generationState.isGenerating {
+            generatePattern()
+        }
+    }
+
+    private func generatePattern() {
+        let patternBinding = _generatedPattern
+        let forRequestBinding = _generatedForRequest
+        let requestText = trimmedRequest
+        generationState.generate(request: requestText, currentPattern: pattern) { result in
+            patternBinding.wrappedValue = result
+            forRequestBinding.wrappedValue = requestText
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Regex Helper")
+                    .font(.headline)
+                Spacer()
+            }
+
+            TextField("e.g. All .log files in any folder", text: $request, axis: .vertical)
+                .textFieldStyle(.roundedBorder)
+                .lineLimit(2 ... 4)
+                .disabled(generationState.isGenerating)
+                .onSubmit { primaryAction() }
+
+            if !trimmedRequest.isEmpty && !isRequestLongEnough {
+                Text("Add more detail to get a useful pattern.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if !generatedPattern.isEmpty {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Generated")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Text(generatedPattern)
+                        .font(.system(.caption, design: .monospaced))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(6)
+                        .background(.quaternary.opacity(0.2), in: RoundedRectangle(cornerRadius: 6))
+                }
+            }
+
+            if let errorMessage = generationState.errorMessage {
+                Label(errorMessage, systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack {
+                if generationState.isGenerating {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+
+                Spacer()
+
+                Button("Generate") {
+                    generatePattern()
+                }
+                .disabled(generationState.isGenerating || !isRequestLongEnough || isAlreadyGenerated)
+
+                Button("Use") {
+                    onUse(generatedPattern)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(generatedPattern.isEmpty || generationState.isGenerating)
+            }
+        }
+        .padding(12)
+        .frame(width: 340)
+        .onKeyPress(.return) {
+            primaryAction()
+            return .handled
+        }
+        .onDisappear {
+            store.save()
+        }
     }
 }
 
