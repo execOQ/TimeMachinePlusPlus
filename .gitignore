@@ -1,5 +1,7 @@
 .build/
 dist/
 .DS_Store
-*.xcuserdata/
+xcuserdata/
+*.xcuserstate
+*.xcbkptlist
 DerivedData/
