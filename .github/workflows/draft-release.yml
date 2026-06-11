@@ -1,6 +1,9 @@
 name: Draft Release
 
 on:
+    push:
+        branches:
+            - main
     workflow_dispatch:
         inputs:
             version:
@@ -27,6 +30,7 @@ jobs:
     draft-release:
         name: Build signed app and draft release
         runs-on: macos-15
+        if: github.event_name == 'workflow_dispatch' || startsWith(github.event.head_commit.message, 'v')
 
         steps:
             - name: Checkout
@@ -35,10 +39,18 @@ jobs:
             - name: Validate version
               id: version
               shell: bash
+              env:
+                  VERSION_INPUT: ${{ inputs.version }}
+                  COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
               run: |
                   set -euo pipefail
 
-                  VERSION="${{ inputs.version }}"
+                  if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+                    VERSION="$VERSION_INPUT"
+                  else
+                    VERSION="$(printf '%s' "$COMMIT_MESSAGE" | head -n 1)"
+                  fi
+
                   if [[ ! "$VERSION" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
                     echo "Version must look like 0.2.0 or v0.2.0"
                     exit 1
@@ -156,6 +168,11 @@ jobs:
 
                   - Replace this draft text with any bug fixes included in this release.
 
+                  ## 📦 Assets
+
+                  - Use the attached TimeMachine++.zip for manual installation and automatic updates.
+                  NOTES
+
                   echo "path=$NOTES_PATH" >> "$GITHUB_OUTPUT"
 
             - name: Create draft release
@@ -184,7 +201,7 @@ jobs:
                     --notes-file "${{ steps.notes.outputs.path }}"
                   )
 
-                  if [[ "${{ inputs.prerelease }}" == "true" ]]; then
+                  if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.prerelease }}" == "true" ]]; then
                     create_args+=(--prerelease)
                     edit_args+=(--prerelease)
                   fi
