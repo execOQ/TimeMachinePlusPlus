@@ -8,8 +8,8 @@
 import SwiftUI
 
 extension View {
-    func previewModifiers() -> some View {
-        frame(width: 600, height: 600)
+    func previewModifiers(setSize: Bool = true) -> some View {
+        frame(width: setSize ? 600 : nil, height: setSize ? 600 : nil)
             .scenePadding()
             .environment(AppStateStore())
     }

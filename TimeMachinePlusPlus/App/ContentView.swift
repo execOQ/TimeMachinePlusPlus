@@ -11,14 +11,12 @@ struct ContentView: View {
         RulesView()
             .sheet(isPresented: $isShowingSettings) {
                 SettingsView()
-                    .environment(store)
-                    .frame(minWidth: 640, minHeight: 620)
             }
             .onAppear(perform: onAppear)
+            .onDisappear(perform: onDisappear)
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
                 store.refreshHelperStatus()
             }
-            .onDisappear(perform: onDisappear)
     }
 }
 

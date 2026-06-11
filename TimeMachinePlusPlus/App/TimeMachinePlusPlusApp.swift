@@ -41,13 +41,8 @@ enum TimeMachinePlusPlusMain {
 
 struct TimeMachinePlusPlusApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @State private var store: AppStateStore
+    @State private var store: AppStateStore = .init()
     @State private var isShowingSettings = false
-
-    init() {
-        let store = AppStateStore()
-        _store = State(initialValue: store)
-    }
 
     var body: some Scene {
         WindowGroup("TimeMachine++", id: "main") {
@@ -56,7 +51,7 @@ struct TimeMachinePlusPlusApp: App {
                 .environment(store)
                 .task {
                     store.load()
-                    if !Self.isRunningUnitTests {
+                    if !Self.isRunningUnitTests && !Self.isRunningForPreviews {
                         store.checkForUpdatesAutomaticallyIfNeeded()
                     }
                 }
@@ -87,6 +82,10 @@ struct TimeMachinePlusPlusApp: App {
         CommandLine.arguments.contains("--background-scan")
     }
 
+    fileprivate static var isRunningForPreviews: Bool {
+        ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1"
+    }
+
     private static var isRunningUnitTests: Bool {
         ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
     }
@@ -94,7 +93,7 @@ struct TimeMachinePlusPlusApp: App {
 
 final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
-        if TimeMachinePlusPlusApp.isBackgroundScan {
+        if TimeMachinePlusPlusApp.isBackgroundScan || TimeMachinePlusPlusApp.isRunningForPreviews {
             NSApp.setActivationPolicy(.accessory)
             return
         }

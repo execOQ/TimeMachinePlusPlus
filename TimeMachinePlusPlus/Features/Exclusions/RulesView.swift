@@ -81,12 +81,9 @@ struct RulesView: View {
         }
         .sheet(isPresented: $isTemplateSheetPresented) {
             RuleTemplatesSheet()
-                .environment(store)
         }
         .sheet(isPresented: $isShowingAppManagedExclusions) {
             AppManagedExclusionsView()
-                .environment(store)
-                .frame(minWidth: 720, minHeight: 520)
         }
         .onChange(of: store.rules) { scheduleAutosave() }
         .onDisappear {
@@ -150,25 +147,21 @@ private struct RuleTemplatesSheet: View {
 
             footer
         }
-        .frame(minWidth: 560, idealWidth: 640, minHeight: 520, idealHeight: 620)
+        .frame(maxWidth: 640, maxHeight: 620)
+        .navigationTitle("Rule Templates")
+        .navigationSubtitle("Add common development artifacts to your exclusion rules.")
     }
 
     private var header: some View {
-        HStack {
+        HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Rule Templates")
-                    .font(.title2.weight(.semibold))
+                    .font(.title3.weight(.semibold))
                 Text("Add common development artifacts to your exclusion rules.")
                     .foregroundStyle(.secondary)
             }
 
             Spacer()
-
-            Button("Close") {
-                dismiss()
-            }
-            .buttonStyle(.borderless)
-            .help("Close")
         }
         .padding()
     }

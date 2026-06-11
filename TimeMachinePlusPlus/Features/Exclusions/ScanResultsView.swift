@@ -47,7 +47,7 @@ struct AppManagedExclusionsView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(minWidth: 200, minHeight: 300)
+        .frame(maxWidth: 720, maxHeight: 520)
         .toolbar {
             ToolbarItem {
                 Button("Close") {
