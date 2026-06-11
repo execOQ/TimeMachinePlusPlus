@@ -10,14 +10,14 @@ enum AppUpdateStatus: String, Codable, Equatable {
     case upToDate
     case failed
 
-    var menuBarSystemImage: String {
+    var menuBarImage: String {
         switch self {
         case .checking, .available, .downloading, .installing:
-            return "arrow.triangle.2.circlepath"
+            return "MenuIcon_Update"
         case .readyToInstall:
-            return "arrow.down.circle.fill"
+            return "MenuIcon_Update"
         case .idle, .upToDate, .failed:
-            return "clock.arrow.circlepath"
+            return "MenuIcon"
         }
     }
 

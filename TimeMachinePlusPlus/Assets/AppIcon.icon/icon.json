@@ -1,0 +1,161 @@
+{
+  "fill" : {
+    "solid" : "display-p3:0.98682,0.98682,0.98682,1.00000"
+  },
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "glass" : false,
+          "image-name-specializations" : [
+            {
+              "value" : "Polygon 1light .svg"
+            },
+            {
+              "appearance" : "dark",
+              "value" : "Polygon 1 dark.svg"
+            },
+            {
+              "appearance" : "tinted",
+              "value" : "Polygon 1.svg"
+            }
+          ],
+          "name" : "Polygon 1 dark",
+          "position" : {
+            "scale" : 1,
+            "translation-in-points" : [
+              -361.80408732181445,
+              78.49999999999994
+            ]
+          }
+        },
+        {
+          "glass" : false,
+          "hidden" : false,
+          "image-name-specializations" : [
+            {
+              "value" : "Ellipse 1 light.svg"
+            },
+            {
+              "appearance" : "dark",
+              "value" : "Elipse 1 dark.svg"
+            },
+            {
+              "appearance" : "tinted",
+              "value" : "Ellipse 1.svg"
+            }
+          ],
+          "name" : "Elipse 1 dark",
+          "position" : {
+            "scale" : 1.1,
+            "translation-in-points" : [
+              0,
+              -1.1368683772161603e-13
+            ]
+          }
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.6
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.2
+      }
+    },
+    {
+      "layers" : [
+        {
+          "glass" : false,
+          "image-name-specializations" : [
+            {
+              "value" : "Vector 4 light.svg"
+            },
+            {
+              "appearance" : "dark",
+              "value" : "Vector 3.svg"
+            },
+            {
+              "appearance" : "tinted",
+              "value" : "Vector 4.svg"
+            }
+          ],
+          "name" : "Vector 4",
+          "position" : {
+            "scale" : 1,
+            "translation-in-points" : [
+              127.85174572018877,
+              0
+            ]
+          }
+        },
+        {
+          "glass" : false,
+          "image-name-specializations" : [
+            {
+              "value" : "Vector 4 light.svg"
+            },
+            {
+              "appearance" : "dark",
+              "value" : "Vector 3.svg"
+            },
+            {
+              "appearance" : "tinted",
+              "value" : "Vector 4.svg"
+            }
+          ],
+          "name" : "Vector 4",
+          "position" : {
+            "scale" : 1,
+            "translation-in-points" : [
+              -126,
+              0
+            ]
+          }
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.6
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.2
+      }
+    },
+    {
+      "layers" : [
+        {
+          "image-name-specializations" : [
+            {
+              "value" : "Light.png"
+            },
+            {
+              "appearance" : "dark",
+              "value" : "Dark.png"
+            },
+            {
+              "appearance" : "tinted",
+              "value" : "Mono.png"
+            }
+          ],
+          "name" : "Dark"
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.6
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.2
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "squares" : [
+      "macOS"
+    ]
+  }
+}

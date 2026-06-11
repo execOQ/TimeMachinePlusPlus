@@ -72,7 +72,7 @@ struct TimeMachinePlusPlusApp: App {
             }
         }
 
-        MenuBarExtra("TimeMachine++", systemImage: store.updateMenuBarSystemImage) {
+        MenuBarExtra("TimeMachine++", image: store.updateMenuBarImage) {
             MenuBarContentView()
                 .environment(store)
         }

@@ -9,15 +9,15 @@ struct SettingsView: View {
         @Bindable var store = store
 
         PageView(title: "Settings") {
-            List {
+            ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
                     SettingsAppSection()
                     SettingsScanSection()
                     SettingsUpdatesSection()
                 }
-                .padding(6)
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .listStyle(.plain)
         }
         .frame(width: 450, height: 500)
         .toolbar {

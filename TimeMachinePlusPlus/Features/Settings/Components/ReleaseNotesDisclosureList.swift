@@ -20,30 +20,29 @@ struct ReleaseNotesDisclosureList: View {
         VStack(alignment: .leading, spacing: 8) {
             AppSectionLabel(title: "Release Notes", topPadding: 2)
 
-            ScrollView {
-                if sections.isEmpty {
+            if sections.isEmpty {
+                ScrollView {
                     Markdown(markdown)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .textSelection(.enabled)
                         .padding(12)
                         .releaseNoteGroupBackground()
-                } else {
-                    LazyVStack(alignment: .leading, spacing: 8) {
-                        ForEach(sections) { section in
-                            ReleaseNoteSectionDisclosure(
-                                section: section,
-                                isExpanded: isExpandedBinding(for: section)
-                            ) {
-                                releaseNoteContent(for: section)
-                            }
+                }
+                .frame(maxHeight: 220)
+            } else {
+                LazyVStack(alignment: .leading, spacing: 8) {
+                    ForEach(sections) { section in
+                        ReleaseNoteSectionDisclosure(
+                            section: section,
+                            isExpanded: isExpandedBinding(for: section)
+                        ) {
+                            releaseNoteContent(for: section)
                         }
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(maxHeight: 220)
         }
-        .onAppear(perform: expandFirstSectionIfNeeded)
         .onChange(of: markdown, onMarkdownChanged)
     }
 
@@ -80,7 +79,6 @@ struct ReleaseNotesDisclosureList: View {
 private extension ReleaseNotesDisclosureList {
     func onMarkdownChanged() {
         expandedSectionIDs.removeAll()
-        expandFirstSectionIfNeeded()
     }
 
     func isExpandedBinding(for section: ReleaseNoteSection) -> Binding<Bool> {
@@ -94,11 +92,6 @@ private extension ReleaseNotesDisclosureList {
                 }
             }
         )
-    }
-
-    func expandFirstSectionIfNeeded() {
-        guard expandedSectionIDs.isEmpty, let firstSection = sections.first else { return }
-        expandedSectionIDs.insert(firstSection.id)
     }
 }
 
@@ -118,12 +111,14 @@ private struct ReleaseNoteSectionDisclosure<Content: View>: View {
                     isExpanded.toggle()
                 }
             } label: {
-                HStack(spacing: 12) {
+                HStack(spacing: 5) {
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.secondary.tertiary)
                         .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                        .frame(width: 16)
+                        .frame(width: 14)
+
+                    Spacer(minLength: 1)
 
                     Text(titleParts.symbol ?? "📰")
                         .font(.title3)
@@ -136,16 +131,21 @@ private struct ReleaseNoteSectionDisclosure<Content: View>: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .contentShape(Rectangle())
-                .padding(.horizontal, 14)
-                .padding(.vertical, 14)
+                .padding(.all, 10)
             }
             .buttonStyle(.plain)
+            .zIndex(1)
 
-            if isExpanded {
-                Divider()
-                content()
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+            VStack(alignment: .leading, spacing: 0) {
+                if isExpanded {
+                    Divider()
+                    content()
+                        .transition(.opacity)
+                }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .clipped()
+            .zIndex(0)
         }
         .releaseNoteGroupBackground()
     }
@@ -158,33 +158,33 @@ private struct ReleaseNoteItemRow: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
             Text(item.symbol ?? "•")
-                .font(item.symbol == nil ? .body : .title3)
+                .font(.body)
                 .foregroundStyle(item.symbol == nil ? .secondary : .primary)
-                .frame(width: 28, alignment: .center)
+                .frame(width: 20)
 
             Markdown(item.markdown)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .textSelection(.enabled)
 
-            if let issueReference = item.issueReference {
-                if let issueURL = item.issueURL {
-                    Link(issueReference, destination: issueURL)
-                        .font(.body.monospacedDigit().weight(.semibold))
-                        .lineLimit(1)
-                } else {
-                    Text(issueReference)
-                        .font(.body.monospacedDigit().weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+            Group {
+                if let issueReference = item.issueReference {
+                    if let issueURL = item.issueURL {
+                        Link(issueReference, destination: issueURL)
+                    } else {
+                        Text(issueReference)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
+            .font(.body.monospacedDigit().weight(.semibold))
+            .lineLimit(1)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 11)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 8)
         .overlay(alignment: .bottom) {
             if showsDivider {
                 Divider()
-                    .padding(.leading, 54)
+                    .padding(.leading, 40)
             }
         }
     }
@@ -196,21 +196,37 @@ private struct ReleaseNoteTitleParts {
 
     init(_ rawTitle: String) {
         let trimmedTitle = rawTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let whitespaceIndex = trimmedTitle.firstIndex(where: \.isWhitespace) else {
-            symbol = nil
-            title = trimmedTitle
-            return
+
+        // First, try the existing space-delimited approach: emoji/symbol followed by space and title
+        if let whitespaceIndex = trimmedTitle.firstIndex(where: \.isWhitespace) {
+            let prefix = String(trimmedTitle[..<whitespaceIndex])
+            if !prefix.containsLetterOrNumber {
+                symbol = prefix
+                title = trimmedTitle[whitespaceIndex...].trimmingCharacters(in: .whitespacesAndNewlines)
+                return
+            }
         }
 
-        let prefix = String(trimmedTitle[..<whitespaceIndex])
-        guard prefix.rangeOfCharacter(from: .alphanumerics) == nil else {
-            symbol = nil
-            title = trimmedTitle
-            return
+        // Fallback: allow a leading non-alphanumeric grapheme cluster as symbol even without a space
+        if let firstScalarCluster = trimmedTitle.first {
+            let firstCluster = String(firstScalarCluster)
+            let remainder = String(trimmedTitle.dropFirst())
+            if !firstCluster.containsLetterOrNumber {
+                symbol = firstCluster
+                title = remainder.trimmingCharacters(in: .whitespacesAndNewlines)
+                return
+            }
         }
 
-        symbol = prefix
-        title = trimmedTitle[whitespaceIndex...].trimmingCharacters(in: .whitespacesAndNewlines)
+        // Default: no symbol detected; keep the whole title
+        symbol = nil
+        title = trimmedTitle
+    }
+}
+
+private extension String {
+    var containsLetterOrNumber: Bool {
+        contains { $0.isLetter || $0.isNumber }
     }
 }
 
@@ -221,5 +237,34 @@ private extension View {
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(.secondary.opacity(0.2), lineWidth: 1)
             }
+            .clipShape(RoundedRectangle(cornerRadius: 8))
     }
+}
+
+#Preview {
+    ReleaseNotesDisclosureList(markdown: """
+        ## 🛠️ Fixes
+        - ✨ Resolved an issue where backups could stall at 99% in rare cases. [#1234]
+        - Improved reliability of network drive detection when waking from sleep. [#1250]
+        - Fixed a crash when parsing very large log files. [#1278]
+
+        ## ✨ Improvements
+        - Faster incremental backup indexing for large photo libraries.
+        - Reduced CPU usage during verification by up to 25%.
+        - Added better progress reporting for long-running tasks.
+
+        ## 🧪 Experimental
+        - New deduplication engine (disabled by default). Enable in Settings → Advanced to try it out.
+
+        ## 📄 Notes
+        This release includes internal changes to the scheduler. If you notice unusual backup timing, please report via Feedback.
+
+        ## 🔗 Links
+        - Documentation: https://example.com/docs/release/1.2.3
+        - Support: https://example.com/support
+
+        """
+    )
+    .frame(maxHeight: .infinity, alignment: .top)
+    .previewModifiers()
 }

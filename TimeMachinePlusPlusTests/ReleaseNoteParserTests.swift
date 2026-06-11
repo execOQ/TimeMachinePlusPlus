@@ -122,4 +122,26 @@ final class ReleaseNoteParserTests: XCTestCase {
             )
         ])
     }
+
+    func testReleaseNoteParserBuildsDisplayListItemsWithCompactSymbolsAndBracketedIssues() {
+        let markdown = """
+        - 🛠️Resolved first-section parsing [#1234]
+        - ✨ Improved preview rendering [#1250]
+        """
+
+        XCTAssertEqual(ReleaseNoteParser.displayListItems(from: markdown), [
+            ReleaseNoteListItem(
+                symbol: "🛠️",
+                markdown: "Resolved first-section parsing",
+                issueReference: "#1234",
+                issueURL: nil
+            ),
+            ReleaseNoteListItem(
+                symbol: "✨",
+                markdown: "Improved preview rendering",
+                issueReference: "#1250",
+                issueURL: nil
+            )
+        ])
+    }
 }

@@ -22,8 +22,10 @@ struct SettingsUpdatesSection: View {
             Label("Version \(AppBuildInfo.displayVersion)", systemImage: "app.badge")
                 .foregroundStyle(.secondary)
 
-            Label(updateTargetVersionLabel, systemImage: "arrow.right")
-                .foregroundStyle(updateStatusColor)
+            if let updateTargetVersionLabel {
+                Label(updateTargetVersionLabel, systemImage: "arrow.right")
+                    .foregroundStyle(updateStatusColor)
+            }
         }
     }
 
@@ -113,9 +115,13 @@ struct SettingsUpdatesSection: View {
     private func automaticUpdatesToggle(@Bindable store: AppStateStore) -> some View {
         VStack {
             Divider()
-            Toggle("Automatically download updates", isOn: $store.settings.automaticallyChecksForUpdates)
-                .onChange(of: store.settings.automaticallyChecksForUpdates, onAutomaticUpdateChecksChanged)
-                .toggleStyle(.switch)
+
+            Toggle(isOn: $store.settings.automaticallyChecksForUpdates) {
+                Text("Automatically download updates")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .toggleStyle(.switch)
+            .onChange(of: store.settings.automaticallyChecksForUpdates, onAutomaticUpdateChecksChanged)
         }
     }
 }
@@ -142,7 +148,7 @@ private extension SettingsUpdatesSection {
         }
     }
 
-    var updateTargetVersionLabel: String {
+    var updateTargetVersionLabel: String? {
         if let updateReleaseVersion = store.updateReleaseVersion {
             return updateReleaseVersion
         }
@@ -157,14 +163,19 @@ private extension SettingsUpdatesSection {
             return "Up to date"
         case .failed:
             return "Update failed"
-        case .idle:
-            return "No update"
         case .available, .downloading, .readyToInstall, .installing:
             return "Update available"
+        default:
+            return nil
         }
     }
 
     var shouldShowUpdateError: Bool {
         store.updateStatus == .failed || store.updateStatus == .available
     }
+}
+
+#Preview {
+    SettingsUpdatesSection()
+        .previewModifiers()
 }

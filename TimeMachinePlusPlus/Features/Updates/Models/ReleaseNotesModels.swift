@@ -137,7 +137,7 @@ enum ReleaseNoteParser {
     }
 
     private static func removingTrailingBareIssueReference(from item: String) -> (markdown: String, issueReference: String?, issueURL: URL?)? {
-        guard let match = firstRegexMatch(pattern: #"\s*#(\d+)\s*$"#, in: item),
+        guard let match = firstRegexMatch(pattern: #"\s*\[?#(\d+)\]?\s*$"#, in: item),
               let fullRange = Range(match.range, in: item),
               let issueRange = Range(match.range(at: 1), in: item)
         else { return nil }
@@ -155,20 +155,32 @@ enum ReleaseNoteParser {
 
     private static func removingLeadingSymbol(from item: String) -> (symbol: String?, markdown: String) {
         let trimmedItem = item.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let whitespaceIndex = trimmedItem.firstIndex(where: \.isWhitespace) else {
-            return (nil, trimmedItem)
+        if let whitespaceIndex = trimmedItem.firstIndex(where: \.isWhitespace) {
+            let prefix = String(trimmedItem[..<whitespaceIndex])
+            if !prefix.containsLetterOrNumber {
+                let markdown = trimmedItem[whitespaceIndex...]
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !markdown.isEmpty else { return (nil, trimmedItem) }
+                return (prefix, markdown)
+            }
         }
 
-        let prefix = String(trimmedItem[..<whitespaceIndex])
-        guard prefix.rangeOfCharacter(from: .alphanumerics) == nil else {
-            return (nil, trimmedItem)
-        }
+        guard let firstCharacter = trimmedItem.first else { return (nil, trimmedItem) }
 
-        let markdown = trimmedItem[whitespaceIndex...]
+        let prefix = String(firstCharacter)
+        guard !prefix.containsLetterOrNumber else { return (nil, trimmedItem) }
+
+        let markdown = trimmedItem.dropFirst()
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !markdown.isEmpty else { return (nil, trimmedItem) }
 
         return (prefix, markdown)
+    }
+}
+
+private extension String {
+    var containsLetterOrNumber: Bool {
+        contains { $0.isLetter || $0.isNumber }
     }
 }
 

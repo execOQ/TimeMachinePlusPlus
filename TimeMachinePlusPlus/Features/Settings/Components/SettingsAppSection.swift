@@ -26,8 +26,8 @@ struct SettingsAppSection: View {
         )) {
             Label("Open TimeMachine++ when logging in", systemImage: "arrow.trianglehead.2.counterclockwise")
                 .foregroundStyle(.primary)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
         .toggleStyle(.switch)
     }
 

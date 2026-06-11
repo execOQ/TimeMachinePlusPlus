@@ -94,8 +94,8 @@ final class AppStateStore {
         return updateStatusMessage
     }
     var hasAvailableUpdate: Bool { updateStatus == .readyToInstall || updateStatus == .downloading || updateStatus == .available }
-    var updateMenuBarSystemImage: String {
-        updateStatus.menuBarSystemImage
+    var updateMenuBarImage: String {
+        updateStatus.menuBarImage
     }
 
     init(timeMachine: TimeMachineClient = LiveTimeMachineClient()) {

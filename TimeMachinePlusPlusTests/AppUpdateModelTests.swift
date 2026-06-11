@@ -3,11 +3,11 @@ import XCTest
 
 final class AppUpdateModelTests: XCTestCase {
     func testUpdateMenuBarIconReflectsUpdateState() {
-        XCTAssertEqual(AppUpdateStatus.idle.menuBarSystemImage, "clock.arrow.circlepath")
-        XCTAssertEqual(AppUpdateStatus.checking.menuBarSystemImage, "arrow.triangle.2.circlepath")
-        XCTAssertEqual(AppUpdateStatus.downloading.menuBarSystemImage, "arrow.triangle.2.circlepath")
-        XCTAssertEqual(AppUpdateStatus.readyToInstall.menuBarSystemImage, "arrow.down.circle.fill")
-        XCTAssertEqual(AppUpdateStatus.failed.menuBarSystemImage, "clock.arrow.circlepath")
+        XCTAssertEqual(AppUpdateStatus.idle.menuBarImage, "MenuIcon")
+        XCTAssertEqual(AppUpdateStatus.checking.menuBarImage, "MenuIcon_Update")
+        XCTAssertEqual(AppUpdateStatus.downloading.menuBarImage, "MenuIcon_Update")
+        XCTAssertEqual(AppUpdateStatus.readyToInstall.menuBarImage, "MenuIcon_Update")
+        XCTAssertEqual(AppUpdateStatus.failed.menuBarImage, "MenuIcon")
     }
 
     func testUpdateNotificationDedupesSameRelease() {
