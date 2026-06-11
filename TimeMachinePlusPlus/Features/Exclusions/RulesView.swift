@@ -1,4 +1,3 @@
-import AppKit
 import SwiftUI
 
 struct RulesView: View {
@@ -14,70 +13,14 @@ struct RulesView: View {
 
         PageView(title: "Rules", subtitle: "Exclude by pattern or add exact paths") {
             VStack(alignment: .leading, spacing: 12) {
-                List {
-                    ForEach($store.rules) { $rule in
-                        RuleRow(rule: $rule) {
-                            store.deleteRule(rule, undoManager: undoManager)
-                        }
-                    }
-                }
-                .listStyle(.inset)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .disabled(!store.canEdit)
+                rulesList(rules: $store.rules)
             }
         }
         .toolbar {
-            ToolbarItemGroup {
-                Button {
-                    isShowingAppManagedExclusions = true
-                } label: {
-                    Label("App-Managed", systemImage: "document.badge.clock.fill")
-                }
-                .help("Show exclusions already applied by TimeMachine++.")
-
-                Menu {
-                    Button {
-                        store.addRule(undoManager: undoManager)
-                    } label: {
-                        Label("Add Rule", systemImage: "plus")
-                    }
-
-                    Button {
-                        pickPaths()
-                    } label: {
-                        Label("Add Path", systemImage: "folder.badge.plus")
-                    }
-
-                    Divider()
-
-                    Button {
-                        isTemplateSheetPresented = true
-                    } label: {
-                        Label("Add from Templates", systemImage: "square.grid.2x2")
-                    }
-                } label: {
-                    Label("Add", systemImage: "plus")
-                }
-                .help("Add a new exclusion rule, or add exact paths to exclude.")
-                .disabled(!store.canEdit)
-            }
-
-            ToolbarItemGroup {
-                if store.isWorking, store.canCancelCurrentOperation {
-                    Button("Cancel") {
-                        store.cancelOperation()
-                    }
-                    .help("Cancel the current exclusion operation.")
-                } else {
-                    Button {
-                        store.startConfiguredStartAction()
-                    } label: {
-                        Label(store.startActionTitle, systemImage: "play")
-                    }
-                    .help(store.startActionHelp)
-                    .disabled(!store.canEdit)
-                }
-            }
+            RulesToolbar(
+                isTemplateSheetPresented: $isTemplateSheetPresented,
+                isShowingAppManagedExclusions: $isShowingAppManagedExclusions
+            )
         }
         .sheet(isPresented: $isTemplateSheetPresented) {
             RuleTemplatesSheet()
@@ -85,26 +28,28 @@ struct RulesView: View {
         .sheet(isPresented: $isShowingAppManagedExclusions) {
             AppManagedExclusionsView()
         }
-        .onChange(of: store.rules) { scheduleAutosave() }
-        .onDisappear {
-            autosaveTask?.cancel()
-            store.save()
+        .onChange(of: store.rules, scheduleAutosave)
+        .onDisappear(perform: onDisappear)
+    }
+
+    // MARK: - View Components
+
+    private func rulesList(rules: Binding<[RegexRule]>) -> some View {
+        List {
+            ForEach(rules) { $rule in
+                RuleRow(rule: $rule) {
+                    self.store.deleteRule(rule, undoManager: undoManager)
+                }
+            }
         }
+        .listStyle(.inset)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .disabled(!self.store.canEdit)
     }
+}
 
-    @MainActor
-    private func pickPaths() {
-        let panel = NSOpenPanel()
-        panel.allowsMultipleSelection = true
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = true
-        panel.treatsFilePackagesAsDirectories = true
-        panel.prompt = "Add"
-        guard panel.runModal() == .OK else { return }
-        store.addPathRules(panel.urls, undoManager: undoManager)
-    }
-
-    private func scheduleAutosave() {
+private extension RulesView {
+    func scheduleAutosave() {
         autosaveTask?.cancel()
         autosaveTask = Task { @MainActor in
             await Task.yield()
@@ -112,159 +57,9 @@ struct RulesView: View {
             store.save()
         }
     }
-}
 
-private struct RuleTemplatesSheet: View {
-    @Environment(AppStateStore.self) private var store
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.undoManager) private var undoManager
-
-    private var categories: [String] {
-        var seen: Set<String> = []
-        return RuleTemplate.common.compactMap { template in
-            guard !seen.contains(template.category) else { return nil }
-            seen.insert(template.category)
-            return template.category
-        }
-    }
-
-    var body: some View {
-        VStack(spacing: 0) {
-            header
-
-            Divider()
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    ForEach(categories, id: \.self) { category in
-                        templateSection(category)
-                    }
-                }
-                .padding()
-            }
-
-            Divider()
-
-            footer
-        }
-        .frame(maxWidth: 640, maxHeight: 620)
-        .navigationTitle("Rule Templates")
-        .navigationSubtitle("Add common development artifacts to your exclusion rules.")
-    }
-
-    private var header: some View {
-        HStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Rule Templates")
-                    .font(.title3.weight(.semibold))
-                Text("Add common development artifacts to your exclusion rules.")
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-        }
-        .padding()
-    }
-
-    private var footer: some View {
-        HStack {
-            Text("\(missingTemplateCount) templates available")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Spacer()
-
-            Button("Done") {
-                dismiss()
-            }
-
-            Button {
-                store.addMissingRules(from: RuleTemplate.common, undoManager: undoManager)
-            } label: {
-                Label("Add All Missing", systemImage: "plus.circle")
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(missingTemplateCount == 0)
-        }
-        .padding()
-    }
-
-    private var missingTemplateCount: Int {
-        RuleTemplate.common.filter { !store.hasRule(from: $0) }.count
-    }
-
-    private func templateSection(_ category: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            AppSectionLabel(title: category, topPadding: 0)
-
-            VStack(spacing: 0) {
-                let templates = RuleTemplate.common.filter { $0.category == category }
-                ForEach(templates) { template in
-                    RuleTemplateRow(template: template)
-
-                    if template.id != templates.last?.id {
-                        Divider()
-                            .padding(.leading, 36)
-                    }
-                }
-            }
-            .boxContainer(padding: 0)
-        }
-    }
-}
-
-private struct RuleTemplateRow: View {
-    @Environment(AppStateStore.self) private var store
-    @Environment(\.undoManager) private var undoManager
-    var template: RuleTemplate
-
-    private var isAdded: Bool {
-        store.hasRule(from: template)
-    }
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: iconName)
-                .foregroundStyle(.secondary)
-                .frame(width: 20)
-                .padding(.top, 3)
-
-            VStack(alignment: .leading, spacing: 5) {
-                Text(template.name)
-                    .font(.headline)
-
-                Text(template.description)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Text(template.pattern.replacingOccurrences(of: "\n", with: ", "))
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(2)
-            }
-
-            Spacer(minLength: 12)
-
-            Button {
-                store.addRule(from: template, undoManager: undoManager)
-            } label: {
-                Label(isAdded ? "Added" : "Add", systemImage: isAdded ? "checkmark" : "plus")
-            }
-            .disabled(isAdded)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 9)
-    }
-
-    private var iconName: String {
-        switch template.category {
-        case "Node": return "hexagon"
-        case "Python": return "chevron.left.forwardslash.chevron.right"
-        case "Ruby": return "diamond"
-        case "Xcode", "Swift": return "hammer"
-        case "Java": return "cup.and.saucer"
-        case "Rust", "Go": return "shippingbox"
-        default: return "folder.badge.gearshape"
-        }
+    func onDisappear() {
+        autosaveTask?.cancel()
+        store.save()
     }
 }

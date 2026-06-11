@@ -28,57 +28,34 @@ struct AppManagedExclusionsView: View {
         PageView(title: "App-Managed Exclusions", subtitle: "Paths that TimeMachine++ has already marked for Time Machine to ignore") {
             VStack(alignment: .leading, spacing: 0) {
                 if store.appliedExclusions.isEmpty {
-                    ContentUnavailableView(
-                        "No App-Managed Exclusions",
-                        systemImage: "checklist",
-                        description: Text("Applied exclusions will appear here after TimeMachine++ adds them.")
-                    )
+                    emptyState()
                 } else {
-                    controlsBar
-
-                    List(selection: $selection) {
-                        ForEach(visibleExclusions) { exclusion in
-                            AppManagedExclusionRow(exclusion: exclusion)
-                                .tag(exclusion.id)
-                        }
-                    }
-                    .listStyle(.inset)
+                    controlsBar()
+                    exclusionsList()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(maxWidth: 720, maxHeight: 520)
         .toolbar {
-            ToolbarItem {
-                Button("Close") {
-                    dismiss()
-                }
-                .help("Close App-Managed Exclusions")
-            }
-
-            ToolbarItem {
-                Button(role: .destructive) {
-                    let targets = selectedVisibleExclusions
-                    selection.removeAll()
-                    Task { await store.removeApplied(targets) }
-                } label: {
-                    Label("Remove Selected", systemImage: "trash")
-                }
-                .disabled(!store.canEdit || selectedVisibleExclusions.isEmpty)
-            }
+            toolbarItems()
         }
-        .onChange(of: store.appliedExclusions) {
-            scheduleSelectionPrune()
-        }
-        .onChange(of: sourceFilter) {
-            scheduleSelectionPrune()
-        }
-        .onDisappear {
-            selectionPruneTask?.cancel()
-        }
+        .onChange(of: store.appliedExclusions, scheduleSelectionPrune)
+        .onChange(of: sourceFilter, scheduleSelectionPrune)
+        .onDisappear(perform: onDisappear)
     }
 
-    private var controlsBar: some View {
+    // MARK: - View Components
+
+    private func emptyState() -> some View {
+        ContentUnavailableView(
+            "No App-Managed Exclusions",
+            systemImage: "checklist",
+            description: Text("Applied exclusions will appear here after TimeMachine++ adds them.")
+        )
+    }
+
+    private func controlsBar() -> some View {
         HStack(spacing: 12) {
             Picker("Filter", selection: $sourceFilter) {
                 ForEach(sourceFilters) { filter in
@@ -105,7 +82,42 @@ struct AppManagedExclusionsView: View {
         .padding(.vertical, 8)
     }
 
-    private func scheduleSelectionPrune() {
+    private func exclusionsList() -> some View {
+        List(selection: $selection) {
+            ForEach(visibleExclusions) { exclusion in
+                AppManagedExclusionRow(exclusion: exclusion)
+                    .tag(exclusion.id)
+            }
+        }
+        .listStyle(.inset)
+    }
+
+    @ToolbarContentBuilder
+    private func toolbarItems() -> some ToolbarContent {
+        ToolbarItem {
+            Button("Close") {
+                dismiss()
+            }
+            .help("Close App-Managed Exclusions")
+        }
+
+        ToolbarItem {
+            Button(role: .destructive, action: removeSelectedExclusions) {
+                Label("Remove Selected", systemImage: "trash")
+            }
+            .disabled(!store.canEdit || selectedVisibleExclusions.isEmpty)
+        }
+    }
+}
+
+private extension AppManagedExclusionsView {
+    func removeSelectedExclusions() {
+        let targets = selectedVisibleExclusions
+        selection.removeAll()
+        Task { await store.removeApplied(targets) }
+    }
+
+    func scheduleSelectionPrune() {
         selectionPruneTask?.cancel()
         let validIDs = Set(visibleExclusions.map(\.id))
         selectionPruneTask = Task { @MainActor in
@@ -114,132 +126,8 @@ struct AppManagedExclusionsView: View {
             selection = selection.intersection(validIDs)
         }
     }
-}
 
-private enum AppManagedExclusionSourceFilter: Hashable, Identifiable {
-    case all
-    case source(String)
-
-    var id: String {
-        switch self {
-        case .all:
-            return "all"
-        case .source(let source):
-            return source
-        }
-    }
-
-    var title: String {
-        switch self {
-        case .all:
-            return "All rules"
-        case .source(let source):
-            return source
-        }
-    }
-
-    func includes(_ exclusion: AppliedExclusion) -> Bool {
-        switch self {
-        case .all:
-            return true
-        case .source(let source):
-            return exclusion.sourceDescription == source
-        }
-    }
-}
-
-private enum AppManagedExclusionSortOrder: String, CaseIterable, Identifiable {
-    case newestFirst
-    case oldestFirst
-    case rule
-    case path
-
-    var id: Self { self }
-
-    var title: String {
-        switch self {
-        case .newestFirst:
-            return "Newest first"
-        case .oldestFirst:
-            return "Oldest first"
-        case .rule:
-            return "Rule"
-        case .path:
-            return "Path"
-        }
-    }
-}
-
-private extension Array where Element == AppliedExclusion {
-    func sorted(using order: AppManagedExclusionSortOrder) -> [AppliedExclusion] {
-        sorted { lhs, rhs in
-            switch order {
-            case .newestFirst:
-                if lhs.appliedAt != rhs.appliedAt {
-                    return lhs.appliedAt > rhs.appliedAt
-                }
-                return lhs.path.localizedCaseInsensitiveCompare(rhs.path) == .orderedAscending
-            case .oldestFirst:
-                if lhs.appliedAt != rhs.appliedAt {
-                    return lhs.appliedAt < rhs.appliedAt
-                }
-                return lhs.path.localizedCaseInsensitiveCompare(rhs.path) == .orderedAscending
-            case .rule:
-                let sourceComparison = lhs.sourceDescription.localizedCaseInsensitiveCompare(rhs.sourceDescription)
-                if sourceComparison != .orderedSame {
-                    return sourceComparison == .orderedAscending
-                }
-                return lhs.path.localizedCaseInsensitiveCompare(rhs.path) == .orderedAscending
-            case .path:
-                return lhs.path.localizedCaseInsensitiveCompare(rhs.path) == .orderedAscending
-            }
-        }
-    }
-}
-
-private struct AppManagedExclusionRow: View {
-    var exclusion: AppliedExclusion
-    @Environment(AppStateStore.self) private var store
-
-    var body: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 3) {
-                AppPathText(path: exclusion.path)
-
-                HStack(spacing: 2) {
-                    Text(exclusion.appliedAt, style: .date)
-                    Text("•")
-                    Text("From \(exclusion.sourceDescription)")
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            }
-            .lineLimit(1)
-
-            Spacer()
-        }
-        .padding(.vertical, 5)
-        .contextMenu {
-            Button {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(exclusion.path, forType: .string)
-            } label: {
-                Label("Copy Path", systemImage: "document.on.document.fill")
-            }
-
-            Button {
-                NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: exclusion.path)])
-            } label: {
-                Label("Reveal in Finder", systemImage: "magnifyingglass")
-            }
-
-            Divider()
-
-            Button {
-                Task { await store.removeApplied([exclusion]) }
-            } label: {
-                Label("Remove Exclusion", systemImage: "trash")
-            }
-        }
+    func onDisappear() {
+        selectionPruneTask?.cancel()
     }
 }

@@ -7,6 +7,24 @@ struct MenuBarContentView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
+            statusSummary()
+            helperSummary()
+
+            Divider()
+
+            appActions()
+
+            Divider()
+
+            utilityActions()
+        }
+        .padding(8)
+    }
+
+    // MARK: - View Components
+
+    private func statusSummary() -> some View {
+        VStack(alignment: .leading, spacing: 4) {
             Text(store.statusMessage)
                 .lineLimit(1)
                 .frame(maxWidth: 260, alignment: .leading)
@@ -16,7 +34,11 @@ struct MenuBarContentView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+        }
+    }
 
+    private func helperSummary() -> some View {
+        VStack(alignment: .leading, spacing: 4) {
             if let helperScanSummary = store.helperScanSummary {
                 Text(helperScanSummary)
                     .font(.caption)
@@ -35,15 +57,12 @@ struct MenuBarContentView: View {
             )
             .font(.caption)
             .foregroundStyle(store.isHelperInstalled ? .green : .secondary)
+        }
+    }
 
-            Divider()
-
-            Button("Open TimeMachine++") {
-                if !WindowFocus.focusMainWindow() {
-                    openWindow(id: "main")
-                    NSApp.activate(ignoringOtherApps: true)
-                }
-            }
+    private func appActions() -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button("Open TimeMachine++", action: openMainWindow)
 
             if store.isWorking {
                 Button("Cancel Current Operation") {
@@ -54,9 +73,11 @@ struct MenuBarContentView: View {
                     store.startConfiguredStartAction()
                 }
             }
+        }
+    }
 
-            Divider()
-
+    private func utilityActions() -> some View {
+        VStack(alignment: .leading, spacing: 8) {
             Button("Refresh Helper Status") {
                 store.refreshHelperStatus()
             }
@@ -65,6 +86,14 @@ struct MenuBarContentView: View {
                 NSApp.terminate(nil)
             }
         }
-        .padding(8)
+    }
+}
+
+private extension MenuBarContentView {
+    func openMainWindow() {
+        if !WindowFocus.focusMainWindow() {
+            openWindow(id: "main")
+            NSApp.activate(ignoringOtherApps: true)
+        }
     }
 }

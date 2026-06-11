@@ -24,24 +24,11 @@ extension AppStateStore {
         }
     }
 
-    func startScanAndBackup() {
-        startOperation(title: "Scan + Backup") { store in
-            await store.scanAndStartBackup()
-        }
-    }
-
     func cancelOperation() {
         guard isWorking, canCancelCurrentOperation else { return }
         activeTask?.cancel()
-
-        if didStartBackupDuringActiveTask {
-            statusMessage = "Cancelling backup..."
-            rulesStatusMessage = statusMessage
-            _ = try? timeMachine.stopBackup()
-        } else {
-            statusMessage = "Cancelling..."
-            rulesStatusMessage = statusMessage
-        }
+        statusMessage = "Cancelling..."
+        rulesStatusMessage = statusMessage
     }
 
     func startOperation(title: String, _ operation: @escaping @MainActor (AppStateStore) async -> Void) {
@@ -52,7 +39,6 @@ extension AppStateStore {
         operationDetail = nil
         operationProgress = nil
         rulesStatusMessage = title
-        didStartBackupDuringActiveTask = false
         beginSleepPrevention(reason: title)
 
         activeTask = Task { [weak self] in
@@ -74,7 +60,6 @@ extension AppStateStore {
         operationTitle = nil
         operationDetail = nil
         operationProgress = nil
-        didStartBackupDuringActiveTask = false
         activeTask = nil
         endSleepPrevention()
     }
@@ -126,80 +111,6 @@ extension AppStateStore {
         guard let operationActivityToken else { return }
         ProcessInfo.processInfo.endActivity(operationActivityToken)
         self.operationActivityToken = nil
-    }
-
-    func syncBackupSleepPrevention() {
-        if backupStatus.isRunning {
-            beginBackupSleepPrevention()
-            startBackupSleepMonitor()
-        } else {
-            endBackupSleepPrevention()
-        }
-    }
-
-    func beginBackupSleepPrevention() {
-        guard backupActivityToken == nil else { return }
-        backupActivityToken = ProcessInfo.processInfo.beginActivity(
-            options: [.userInitiated, .idleSystemSleepDisabled],
-            reason: "Time Machine backup"
-        )
-    }
-
-    func endBackupSleepPrevention() {
-        backupActivityTask?.cancel()
-        backupActivityTask = nil
-        guard let backupActivityToken else { return }
-        ProcessInfo.processInfo.endActivity(backupActivityToken)
-        self.backupActivityToken = nil
-    }
-
-    func startBackupSleepMonitor() {
-        guard backupActivityTask == nil else { return }
-        backupActivityTask = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 60_000_000_000)
-                guard !Task.isCancelled else { return }
-                await self?.refreshBackupStatusForSleepPrevention()
-            }
-        }
-    }
-
-    func refreshBackupStatusForSleepPrevention() async {
-        let nextStatus = await Task.detached(priority: .utility) { [timeMachine] in
-            do {
-                let result = try timeMachine.run(arguments: ["status"], asAdministrator: false)
-                return TimeMachineStateParser.backupStatus(from: result)
-            } catch {
-                return .unknown
-            }
-        }.value
-        backupStatus = nextStatus
-        syncBackupSleepPrevention()
-    }
-
-    func confirmedBackupStatusAfterStart() async -> TimeMachineBackupStatus {
-        for attempt in 0..<5 {
-            if attempt > 0 {
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
-            }
-            guard !Task.isCancelled else { return backupStatus }
-
-            let nextStatus = await Task.detached(priority: .utility) { [timeMachine] in
-                do {
-                    let result = try timeMachine.run(arguments: ["status"], asAdministrator: false)
-                    return TimeMachineStateParser.backupStatus(from: result)
-                } catch {
-                    return .unknown
-                }
-            }.value
-
-            if nextStatus.isRunning {
-                return nextStatus
-            }
-            backupStatus = nextStatus
-        }
-
-        return backupStatus
     }
 
 }

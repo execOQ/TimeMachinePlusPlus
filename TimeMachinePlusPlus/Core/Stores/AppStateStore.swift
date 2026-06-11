@@ -1,4 +1,3 @@
-import AppKit
 import AppUpdater
 import Combine
 import Foundation
@@ -11,7 +10,6 @@ final class AppStateStore {
     var manualExclusions: [ManualExclusion] = []
     var appliedExclusions: [AppliedExclusion] = []
     var settings: AppSettings = .defaults
-    var snapshotSizeCache: [String: Int64] = [:]
     var matches: [ScanMatch] = []
     var statusMessage = "Ready"
     var rulesStatusMessage = "Ready"
@@ -29,10 +27,6 @@ final class AppStateStore {
     var isHelperRunning = false
     var helperRunCount: Int?
     var helperLastExitCode: Int32?
-    var timeMachineDestinations: [TimeMachineDestination] = []
-    var backupHistoriesByDestinationID: [String: TimeMachineBackupHistory] = [:]
-    var backupStatus: TimeMachineBackupStatus = .unknown
-    var localSnapshotDates: [String] = []
     var fullDiskAccessStatus: FullDiskAccessStatus = .missing
     var isMeasuringSizes = false
     var isLoginItemEnabled = false
@@ -66,15 +60,7 @@ final class AppStateStore {
     @ObservationIgnored
     var updateCancellables = Set<AnyCancellable>()
     @ObservationIgnored
-    var didStartBackupDuringActiveTask = false
-    @ObservationIgnored
     var operationActivityToken: NSObjectProtocol?
-    @ObservationIgnored
-    var backupActivityToken: NSObjectProtocol?
-    @ObservationIgnored
-    var backupActivityTask: Task<Void, Never>?
-    @ObservationIgnored
-    var attemptedNetworkShareMounts: Set<String> = []
 
     var canEdit: Bool { !isWorking }
     var startActionTitle: String {
@@ -83,8 +69,8 @@ final class AppStateStore {
     var startActionHelp: String {
         "Scan and apply exclusions without starting a backup"
     }
-    var isCombinedStartOperation: Bool {
-        operationTitle == "Scan + Backup" || operationTitle == "Scan + Apply"
+    var isScanAndApplyOperation: Bool {
+        operationTitle == "Scan + Apply"
     }
     var helperScanSummary: String? {
         guard let lastHelperScanDate else { return nil }
