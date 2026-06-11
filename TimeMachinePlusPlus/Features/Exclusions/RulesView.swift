@@ -34,7 +34,7 @@ struct RulesView: View {
 
     // MARK: - View Components
 
-    @ContentBuilder
+    @ViewBuilder
     private func rulesList(rules: Binding<[RegexRule]>) -> some View {
         if !rules.wrappedValue.isEmpty {
             List {
