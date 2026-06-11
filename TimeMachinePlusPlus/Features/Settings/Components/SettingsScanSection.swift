@@ -50,7 +50,7 @@ struct SettingsScanSection: View {
         }
     }
 
-    @ContentBuilder
+    @ViewBuilder
     private func maxDepthControl(@Bindable store: AppStateStore) -> some View {
         HStack {
             Text("Maximum scan depth")
