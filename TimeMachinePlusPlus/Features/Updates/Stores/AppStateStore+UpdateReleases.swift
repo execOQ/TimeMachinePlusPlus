@@ -38,7 +38,7 @@ extension AppStateStore {
     }
 
     private func fetchGitHubReleases() async throws -> [GitHubReleaseMetadata] {
-        let url = URL(string: "https://api.github.com/repos/execOQ/TimeMachineAdvanced/releases")!
+        let url = URL(string: "https://api.github.com/repos/execOQ/TimeMachinePlusPlus/releases")!
         let (data, response) = try await URLSession.shared.data(from: url)
 
         guard let httpResponse = response as? HTTPURLResponse, 200 ..< 300 ~= httpResponse.statusCode else {

@@ -34,17 +34,22 @@ struct RulesView: View {
 
     // MARK: - View Components
 
+    @ContentBuilder
     private func rulesList(rules: Binding<[RegexRule]>) -> some View {
-        List {
-            ForEach(rules) { $rule in
-                RuleRow(rule: $rule) {
-                    self.store.deleteRule(rule, undoManager: undoManager)
+        if !rules.wrappedValue.isEmpty {
+            List {
+                ForEach(rules) { $rule in
+                    RuleRow(rule: $rule) {
+                        self.store.deleteRule(rule, undoManager: undoManager)
+                    }
                 }
             }
+            .listStyle(.inset)
+            .disabled(!store.canEdit)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            ContentUnavailableView("No rules added", systemImage: "plus", description: Text("Click plus in toolbar to create a new rule"))
         }
-        .listStyle(.inset)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .disabled(!self.store.canEdit)
     }
 }
 
@@ -52,9 +57,9 @@ private extension RulesView {
     func scheduleAutosave() {
         autosaveTask?.cancel()
         autosaveTask = Task { @MainActor in
-            await Task.yield()
+            try? await Task.sleep(for: .milliseconds(650))
             guard !Task.isCancelled else { return }
-            store.save()
+            store.saveInBackground()
         }
     }
 

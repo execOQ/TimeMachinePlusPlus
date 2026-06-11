@@ -1,215 +1,197 @@
 name: Draft Release
 
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: "Semantic version to release, for example 0.2.0"
-        required: true
-        type: string
-      prerelease:
-        description: "Mark the draft release as a prerelease"
-        required: false
-        default: false
-        type: boolean
+    workflow_dispatch:
+        inputs:
+            version:
+                description: "Semantic version to release, for example 0.2.0"
+                required: true
+                type: string
+            prerelease:
+                description: "Mark the draft release as a prerelease"
+                required: false
+                default: false
+                type: boolean
 
 permissions:
-  contents: write
+    contents: write
 
 env:
-  SCHEME: TimeMachinePlusPlus
-  PROJECT: TimeMachinePlusPlus.xcodeproj
-  APP_NAME: TimeMachine++
-  BUNDLE_ID: consequential.timemachineplusplus
+    SCHEME: TimeMachinePlusPlus
+    PROJECT: TimeMachinePlusPlus.xcodeproj
+    APP_NAME: TimeMachine++
+    RELEASE_ZIP_NAME: TimeMachine++.zip
+    BUNDLE_ID: consequential.timemachineplusplus
 
 jobs:
-  draft-release:
-    name: Build signed app and draft release
-    runs-on: macos-15
+    draft-release:
+        name: Build signed app and draft release
+        runs-on: macos-15
 
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
 
-      - name: Validate version
-        id: version
-        shell: bash
-        run: |
-          set -euo pipefail
+            - name: Validate version
+              id: version
+              shell: bash
+              run: |
+                  set -euo pipefail
 
-          VERSION="${{ inputs.version }}"
-          if [[ ! "$VERSION" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
-            echo "Version must look like 0.2.0 or v0.2.0"
-            exit 1
-          fi
+                  VERSION="${{ inputs.version }}"
+                  if [[ ! "$VERSION" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+                    echo "Version must look like 0.2.0 or v0.2.0"
+                    exit 1
+                  fi
 
-          ASSET_VERSION="${VERSION#v}"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "asset_version=$ASSET_VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag=v$ASSET_VERSION" >> "$GITHUB_OUTPUT"
+                  ASSET_VERSION="${VERSION#v}"
+                  echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+                  echo "asset_version=$ASSET_VERSION" >> "$GITHUB_OUTPUT"
+                  echo "tag=v$ASSET_VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Require signing secrets
-        shell: bash
-        env:
-          BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
-          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
-          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          set -euo pipefail
+            - name: Require signing secrets
+              shell: bash
+              env:
+                  BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+                  P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+                  KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+                  APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+              run: |
+                  set -euo pipefail
 
-          missing=()
-          [[ -n "$BUILD_CERTIFICATE_BASE64" ]] || missing+=("BUILD_CERTIFICATE_BASE64")
-          [[ -n "$P12_PASSWORD" ]] || missing+=("P12_PASSWORD")
-          [[ -n "$KEYCHAIN_PASSWORD" ]] || missing+=("KEYCHAIN_PASSWORD")
-          [[ -n "$APPLE_TEAM_ID" ]] || missing+=("APPLE_TEAM_ID")
+                  missing=()
+                  [[ -n "$BUILD_CERTIFICATE_BASE64" ]] || missing+=("BUILD_CERTIFICATE_BASE64")
+                  [[ -n "$P12_PASSWORD" ]] || missing+=("P12_PASSWORD")
+                  [[ -n "$KEYCHAIN_PASSWORD" ]] || missing+=("KEYCHAIN_PASSWORD")
+                  [[ -n "$APPLE_TEAM_ID" ]] || missing+=("APPLE_TEAM_ID")
 
-          if (( ${#missing[@]} > 0 )); then
-            printf 'Missing required signing secret: %s\n' "${missing[@]}"
-            echo "Add a Developer ID Application certificate exported as .p12 to BUILD_CERTIFICATE_BASE64."
-            exit 1
-          fi
+                  if (( ${#missing[@]} > 0 )); then
+                    printf 'Missing required signing secret: %s\n' "${missing[@]}"
+                    echo "Add a Developer ID Application certificate exported as .p12 to BUILD_CERTIFICATE_BASE64."
+                    exit 1
+                  fi
 
-      - name: Import signing certificate
-        shell: bash
-        env:
-          BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
-          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
-          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
-        run: |
-          set -euo pipefail
+            - name: Import signing certificate
+              shell: bash
+              env:
+                  BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+                  P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+                  KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+              run: |
+                  set -euo pipefail
 
-          CERTIFICATE_PATH="$RUNNER_TEMP/build_certificate.p12"
-          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+                  CERTIFICATE_PATH="$RUNNER_TEMP/build_certificate.p12"
+                  KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
 
-          echo "$BUILD_CERTIFICATE_BASE64" | base64 -D > "$CERTIFICATE_PATH"
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security import "$CERTIFICATE_PATH" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
-          security list-keychains -d user -s "$KEYCHAIN_PATH"
-          security default-keychain -s "$KEYCHAIN_PATH"
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+                  echo "$BUILD_CERTIFICATE_BASE64" | base64 -D > "$CERTIFICATE_PATH"
+                  security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+                  security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+                  security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+                  security import "$CERTIFICATE_PATH" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+                  security list-keychains -d user -s "$KEYCHAIN_PATH"
+                  security default-keychain -s "$KEYCHAIN_PATH"
+                  security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 
-      - name: Resolve Swift packages
-        run: |
-          xcodebuild \
-            -resolvePackageDependencies \
-            -project "$PROJECT" \
-            -scheme "$SCHEME"
+            - name: Resolve Swift packages
+              run: |
+                  xcodebuild \
+                    -resolvePackageDependencies \
+                    -project "$PROJECT" \
+                    -scheme "$SCHEME"
 
-      - name: Archive app
-        env:
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          set -euo pipefail
+            - name: Archive app
+              env:
+                  APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+              run: |
+                  set -euo pipefail
 
-          ARCHIVE_PATH="$RUNNER_TEMP/$APP_NAME.xcarchive"
-          xcodebuild archive \
-            -project "$PROJECT" \
-            -scheme "$SCHEME" \
-            -configuration Release \
-            -archivePath "$ARCHIVE_PATH" \
-            -destination "generic/platform=macOS" \
-            MARKETING_VERSION="${{ steps.version.outputs.asset_version }}" \
-            CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
-            CODE_SIGN_STYLE=Manual \
-            CODE_SIGN_IDENTITY="Developer ID Application" \
-            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
-            ENABLE_HARDENED_RUNTIME=YES
+                  ARCHIVE_PATH="$RUNNER_TEMP/$APP_NAME.xcarchive"
+                  xcodebuild archive \
+                    -project "$PROJECT" \
+                    -scheme "$SCHEME" \
+                    -configuration Release \
+                    -archivePath "$ARCHIVE_PATH" \
+                    -destination "generic/platform=macOS" \
+                    MARKETING_VERSION="${{ steps.version.outputs.asset_version }}" \
+                    CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
+                    CODE_SIGN_STYLE=Manual \
+                    CODE_SIGN_IDENTITY="Developer ID Application" \
+                    DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+                    ENABLE_HARDENED_RUNTIME=YES
 
-          APP_PATH="$ARCHIVE_PATH/Products/Applications/$APP_NAME.app"
-          test -d "$APP_PATH"
-          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+                  APP_PATH="$ARCHIVE_PATH/Products/Applications/$APP_NAME.app"
+                  test -d "$APP_PATH"
+                  codesign --verify --deep --strict --verbose=2 "$APP_PATH"
 
-          echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
+                  echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
 
-      - name: Create release assets
-        id: package
-        shell: bash
-        run: |
-          set -euo pipefail
+            - name: Create release assets
+              id: package
+              shell: bash
+              run: |
+                  set -euo pipefail
 
-          ZIP_NAME="$APP_NAME-${{ steps.version.outputs.asset_version }}.zip"
-          DMG_NAME="$APP_NAME-${{ steps.version.outputs.asset_version }}.dmg"
-          DIST_DIR="$RUNNER_TEMP/dist"
-          DMG_ROOT="$RUNNER_TEMP/dmg-root"
-          mkdir -p "$DIST_DIR"
-          mkdir -p "$DMG_ROOT"
+                  ZIP_NAME="$RELEASE_ZIP_NAME"
+                  DIST_DIR="$RUNNER_TEMP/dist"
+                  mkdir -p "$DIST_DIR"
 
-          ditto -c -k --keepParent "$APP_PATH" "$DIST_DIR/$ZIP_NAME"
-          cp -R "$APP_PATH" "$DMG_ROOT/"
-          ln -s /Applications "$DMG_ROOT/Applications"
-          hdiutil create \
-            -volname "$APP_NAME ${{ steps.version.outputs.asset_version }}" \
-            -srcfolder "$DMG_ROOT" \
-            -ov \
-            -format UDZO \
-            "$DIST_DIR/$DMG_NAME"
+                  ditto -c -k --keepParent "$APP_PATH" "$DIST_DIR/$ZIP_NAME"
 
-          shasum -a 256 "$DIST_DIR/$ZIP_NAME" "$DIST_DIR/$DMG_NAME" | tee "$DIST_DIR/checksums.sha256"
+                  echo "zip_name=$ZIP_NAME" >> "$GITHUB_OUTPUT"
+                  echo "zip_path=$DIST_DIR/$ZIP_NAME" >> "$GITHUB_OUTPUT"
 
-          echo "zip_name=$ZIP_NAME" >> "$GITHUB_OUTPUT"
-          echo "zip_path=$DIST_DIR/$ZIP_NAME" >> "$GITHUB_OUTPUT"
-          echo "dmg_name=$DMG_NAME" >> "$GITHUB_OUTPUT"
-          echo "dmg_path=$DIST_DIR/$DMG_NAME" >> "$GITHUB_OUTPUT"
-          echo "checksums_path=$DIST_DIR/checksums.sha256" >> "$GITHUB_OUTPUT"
+            - name: Write editable release notes
+              id: notes
+              shell: bash
+              run: |
+                  set -euo pipefail
 
-      - name: Write editable release notes
-        id: notes
-        shell: bash
-        run: |
-          set -euo pipefail
+                  NOTES_PATH="$RUNNER_TEMP/release-notes.md"
+                  cat > "$NOTES_PATH" <<'NOTES'
+                  ## ✨ New Features
 
-          NOTES_PATH="$RUNNER_TEMP/release-notes.md"
-          cat > "$NOTES_PATH" <<'NOTES'
-          ## Changes
+                  - Replace this draft text with the release notes before publishing.
 
-          Replace this draft text with the release notes before publishing.
+                  ## 🐞 Bug Fixes
 
-          ## Assets
+                  - Replace this draft text with any bug fixes included in this release.
 
-          Use the attached zip for automatic updates. Use the dmg for manual installation.
-          NOTES
+                  echo "path=$NOTES_PATH" >> "$GITHUB_OUTPUT"
 
-          echo "path=$NOTES_PATH" >> "$GITHUB_OUTPUT"
+            - name: Create draft release
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              shell: bash
+              run: |
+                  set -euo pipefail
 
-      - name: Create draft release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
+                  TAG="${{ steps.version.outputs.tag }}"
+                  ASSETS=(
+                    "${{ steps.package.outputs.zip_path }}"
+                  )
 
-          TAG="${{ steps.version.outputs.tag }}"
-          ASSETS=(
-            "${{ steps.package.outputs.zip_path }}"
-            "${{ steps.package.outputs.dmg_path }}"
-            "${{ steps.package.outputs.checksums_path }}"
-          )
+                  create_args=(
+                    release create "${{ steps.version.outputs.tag }}"
+                    "${ASSETS[@]}"
+                    --draft
+                    --title "${{ steps.version.outputs.asset_version }}"
+                    --notes-file "${{ steps.notes.outputs.path }}"
+                  )
+                  edit_args=(
+                    release edit "$TAG"
+                    --draft
+                    --title "${{ steps.version.outputs.asset_version }}"
+                    --notes-file "${{ steps.notes.outputs.path }}"
+                  )
 
-          create_args=(
-            release create "${{ steps.version.outputs.tag }}"
-            "${ASSETS[@]}"
-            --draft
-            --title "$APP_NAME ${{ steps.version.outputs.asset_version }}"
-            --notes-file "${{ steps.notes.outputs.path }}"
-          )
-          edit_args=(
-            release edit "$TAG"
-            --draft
-            --title "$APP_NAME ${{ steps.version.outputs.asset_version }}"
-            --notes-file "${{ steps.notes.outputs.path }}"
-          )
+                  if [[ "${{ inputs.prerelease }}" == "true" ]]; then
+                    create_args+=(--prerelease)
+                    edit_args+=(--prerelease)
+                  fi
 
-          if [[ "${{ inputs.prerelease }}" == "true" ]]; then
-            create_args+=(--prerelease)
-            edit_args+=(--prerelease)
-          fi
-
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" "${ASSETS[@]}" --clobber
-            gh "${edit_args[@]}"
-          else
-            gh "${create_args[@]}"
-          fi
+                  if gh release view "$TAG" >/dev/null 2>&1; then
+                    gh release upload "$TAG" "${ASSETS[@]}" --clobber
+                    gh "${edit_args[@]}"
+                  else
+                    gh "${create_args[@]}"
+                  fi

@@ -59,19 +59,15 @@ extension AppStateStore {
     }
 
     func save() {
-        storage.save(
-            PersistedState(
-                rules: rules,
-                manualExclusions: manualExclusions,
-                appliedExclusions: appliedExclusions,
-                settings: settings,
-                lastHelperScanDate: lastHelperScanDate,
-                lastHelperScannedItemCount: lastHelperScannedItemCount,
-                lastHelperAddedExclusionCount: lastHelperAddedExclusionCount,
-                lastUpdateCheckDate: lastUpdateCheckDate,
-                lastNotifiedUpdateVersion: lastNotifiedUpdateVersion
-            )
-        )
+        storage.save(persistedStateSnapshot)
+    }
+
+    func saveInBackground() {
+        let state = persistedStateSnapshot
+        let storage = storage
+        Task.detached(priority: .utility) {
+            storage.save(state)
+        }
     }
 
     func recordHelperScan(scannedItemCount: Int, addedExclusionCount: Int) {
@@ -81,4 +77,20 @@ extension AppStateStore {
         save()
     }
 
+}
+
+private extension AppStateStore {
+    var persistedStateSnapshot: PersistedState {
+        PersistedState(
+            rules: rules,
+            manualExclusions: manualExclusions,
+            appliedExclusions: appliedExclusions,
+            settings: settings,
+            lastHelperScanDate: lastHelperScanDate,
+            lastHelperScannedItemCount: lastHelperScannedItemCount,
+            lastHelperAddedExclusionCount: lastHelperAddedExclusionCount,
+            lastUpdateCheckDate: lastUpdateCheckDate,
+            lastNotifiedUpdateVersion: lastNotifiedUpdateVersion
+        )
+    }
 }

@@ -44,7 +44,7 @@ extension AppStateStore {
     }
 
     func openLatestReleasePage() {
-        let url = updateReleaseURL ?? URL(string: "https://github.com/execOQ/TimeMachineAdvanced/releases")!
+        let url = updateReleaseURL ?? URL(string: "https://github.com/execOQ/TimeMachinePlusPlus/releases")!
         NSWorkspace.shared.open(url)
     }
 

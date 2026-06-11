@@ -52,7 +52,7 @@ final class AppStateStore {
     @ObservationIgnored
     let loginItem = LoginItemService()
     @ObservationIgnored
-    let appUpdater = AppUpdater(owner: "execOQ", repo: "TimeMachineAdvanced", releasePrefix: "TimeMachine++", interval: 365 * 24 * 60 * 60, provider: NormalizingGitHubReleaseProvider())
+    let appUpdater = AppUpdater(owner: "execOQ", repo: "TimeMachinePlusPlus", releasePrefix: "TimeMachine++", interval: 365 * 24 * 60 * 60, provider: NormalizingGitHubReleaseProvider())
     @ObservationIgnored
     var activeTask: Task<Void, Never>?
     @ObservationIgnored

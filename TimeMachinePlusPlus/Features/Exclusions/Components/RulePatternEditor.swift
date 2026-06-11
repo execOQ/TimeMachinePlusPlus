@@ -53,7 +53,6 @@ struct RulePatternEditor: View {
             .help("Generate a regex with Apple Intelligence")
             .popover(isPresented: $isAIHelperPresented, arrowEdge: .bottom) {
                 RegexIntelligencePopover(
-                    pattern: rule.pattern,
                     request: $rule.lastAIRequest,
                     generatedPattern: $rule.lastAIGeneratedPattern,
                     generatedForRequest: $rule.lastAIGeneratedForRequest,

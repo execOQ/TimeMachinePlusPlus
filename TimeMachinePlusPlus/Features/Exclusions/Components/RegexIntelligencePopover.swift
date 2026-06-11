@@ -16,7 +16,6 @@ final class AIRegexGenerationState {
 
     func generate(
         request: String,
-        currentPattern: String,
         onSuccess: @escaping (String) -> Void
     ) {
         task?.cancel()
@@ -26,7 +25,7 @@ final class AIRegexGenerationState {
         task = Task { [weak self] in
             guard let self else { return }
             do {
-                let result = try await AppleIntelligenceRegexHelper.generateRegex(for: request, currentPattern: currentPattern)
+                let result = try await AppleIntelligenceRegexHelper.generateRegex(for: request)
                 guard !Task.isCancelled else { return }
                 onSuccess(result)
                 self.isGenerating = false
@@ -40,7 +39,6 @@ final class AIRegexGenerationState {
 }
 
 struct RegexIntelligencePopover: View {
-    let pattern: String
     @Binding var request: String
     @Binding var generatedPattern: String
     @Binding var generatedForRequest: String
@@ -165,7 +163,7 @@ private extension RegexIntelligencePopover {
         let patternBinding = _generatedPattern
         let forRequestBinding = _generatedForRequest
         let requestText = trimmedRequest
-        generationState.generate(request: requestText, currentPattern: pattern) { result in
+        generationState.generate(request: requestText) { result in
             patternBinding.wrappedValue = result
             forRequestBinding.wrappedValue = requestText
         }

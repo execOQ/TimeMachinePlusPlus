@@ -34,12 +34,12 @@ enum AppleIntelligenceRegexHelper {
         #endif
     }
 
-    static func generateRegex(for request: String, currentPattern: String) async throws -> String {
+    static func generateRegex(for request: String) async throws -> String {
         guard #available(macOS 26.0, *) else {
             throw RegexGenerationError.unavailable("Apple Intelligence regex help requires macOS 26 or later.")
         }
         #if canImport(FoundationModels)
-        return try await FoundationModelsRegexHelper.generateRegex(for: request, currentPattern: currentPattern)
+        return try await FoundationModelsRegexHelper.generateRegex(for: request)
         #else
         throw RegexGenerationError.unavailable("Apple Intelligence regex help requires an SDK with FoundationModels.")
         #endif
@@ -88,7 +88,7 @@ private enum FoundationModelsRegexHelper {
         }
     }
 
-    static func generateRegex(for request: String, currentPattern: String) async throws -> String {
+    static func generateRegex(for request: String) async throws -> String {
         let trimmedRequest = request.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedRequest.isEmpty else {
             throw AppleIntelligenceRegexHelper.RegexGenerationError.emptyRequest
@@ -103,7 +103,7 @@ private enum FoundationModelsRegexHelper {
         Prefer concise, anchored patterns when the request describes a path suffix or exact filename.
         Avoid constructs unsupported by NSRegularExpression.
         """)
-        let response = try await session.respond(to: prompt(for: trimmedRequest, currentPattern: currentPattern))
+        let response = try await session.respond(to: prompt(for: trimmedRequest))
         let pattern = sanitizedPattern(from: String(describing: response.content))
 
         if let validationIssue = RegexValidator.validateWithSuggestion(pattern) {
@@ -115,15 +115,9 @@ private enum FoundationModelsRegexHelper {
         return pattern
     }
 
-    private static func prompt(for request: String, currentPattern: String) -> String {
-        let trimmedPattern = currentPattern.trimmingCharacters(in: .whitespacesAndNewlines)
-        let patternContext = trimmedPattern.isEmpty
-            ? "There is no current regex."
-            : "Current regex: \(trimmedPattern)"
-
+    private static func prompt(for request: String) -> String {
         return """
         Request: \(request)
-        \(patternContext)
 
         Create one complete regex pattern for matching filesystem paths or names to exclude from Time Machine backups.
         Return only the regex pattern.

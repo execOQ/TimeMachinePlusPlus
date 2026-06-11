@@ -40,28 +40,28 @@ final class ReleaseNoteParserTests: XCTestCase {
 
     func testReleaseNoteParserSplitsNestedHeadingsIntoSeparateSections() {
         let markdown = """
-        # Changes
+        # ✨ Changes
 
-        Replace this draft text with the release notes before publishing.
+        - Replace this draft text with the release notes before publishing.
 
-        ## Assets
+        ## 📦 Assets
 
-        Use the attached zip for automatic updates. Use the dmg for manual installation.
+        - Use the attached TimeMachine++.zip for manual installation and automatic updates.
         """
 
         let sections = ReleaseNoteParser.sections(from: markdown)
 
-        XCTAssertEqual(sections.map(\.title), ["Changes", "Assets"])
-        XCTAssertEqual(sections[0].markdown, "Replace this draft text with the release notes before publishing.")
-        XCTAssertEqual(sections[1].markdown, "Use the attached zip for automatic updates. Use the dmg for manual installation.")
+        XCTAssertEqual(sections.map(\.title), ["✨ Changes", "📦 Assets"])
+        XCTAssertEqual(sections[0].listItems, ["Replace this draft text with the release notes before publishing."])
+        XCTAssertEqual(sections[1].listItems, ["Use the attached TimeMachine++.zip for manual installation and automatic updates."])
     }
 
     func testReleaseNoteParserHandlesGitHubReleaseCRLFBody() {
-        let markdown = "## Changes\r\n\r\n- Replace this draft text with the release notes before publishing.\r\n\r\n## Assets\r\n\r\n- Use the attached zip for automatic updates. Use the dmg for manual installation.\r\n"
+        let markdown = "## ✨ Changes\r\n\r\n- Replace this draft text with the release notes before publishing.\r\n\r\n## 📦 Assets\r\n\r\n- Use the attached TimeMachine++.zip for manual installation and automatic updates.\r\n"
 
         let sections = ReleaseNoteParser.sections(from: markdown)
 
-        XCTAssertEqual(sections.map(\.title), ["Changes", "Assets"])
+        XCTAssertEqual(sections.map(\.title), ["✨ Changes", "📦 Assets"])
         XCTAssertEqual(sections[0].displayListItems, [
             ReleaseNoteListItem(
                 symbol: nil,
@@ -73,7 +73,7 @@ final class ReleaseNoteParserTests: XCTestCase {
         XCTAssertEqual(sections[1].displayListItems, [
             ReleaseNoteListItem(
                 symbol: nil,
-                markdown: "Use the attached zip for automatic updates. Use the dmg for manual installation.",
+                markdown: "Use the attached TimeMachine++.zip for manual installation and automatic updates.",
                 issueReference: nil,
                 issueURL: nil
             )
@@ -96,7 +96,7 @@ final class ReleaseNoteParserTests: XCTestCase {
 
     func testReleaseNoteParserBuildsDisplayListItems() {
         let markdown = """
-        - ✨ Approachable concurrency + Lots of code refactoring [#1015](https://github.com/execOQ/TimeMachineAdvanced/pull/1015)
+        - ✨ Approachable concurrency + Lots of code refactoring [#1015](https://github.com/execOQ/TimeMachinePlusPlus/pull/1015)
         - 🚨 Updated Luminare modifiers #1062
         - Support Loop by [sponsoring the project](https://example.com)
         """
@@ -106,7 +106,7 @@ final class ReleaseNoteParserTests: XCTestCase {
                 symbol: "✨",
                 markdown: "Approachable concurrency + Lots of code refactoring",
                 issueReference: "#1015",
-                issueURL: URL(string: "https://github.com/execOQ/TimeMachineAdvanced/pull/1015")
+                issueURL: URL(string: "https://github.com/execOQ/TimeMachinePlusPlus/pull/1015")
             ),
             ReleaseNoteListItem(
                 symbol: "🚨",
